@@ -1,0 +1,19 @@
+venv/
+__pycache__/
+*.pyc
+data/raw/
+data/processed/
+data/uploads/
+models/**/*.pth
+models/onnx/*.onnx
+models/onnx/benchmark_results.json
+frontend/node_modules/
+frontend/build/
+frontend/.eslintcache
+.env
+.DS_Store
+nohup.out
+
+# internal strategy docs (kept local)
+IMPLEMENTATION_PLAN.md
+Comprehensive*.md
