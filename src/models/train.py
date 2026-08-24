@@ -84,11 +84,16 @@ def make_loaders(args):
         )
 
     idrid_train = IDRiDDataset(task="segmentation", transform=TRAIN_TRANSFORM, split="train", cache_root=cache_root)
+    idrid_test = IDRiDDataset(task="segmentation", transform=TRAIN_TRANSFORM, split="test", cache_root=cache_root)
     idrid_val = IDRiDDataset(task="segmentation", transform=EVAL_TRANSFORM, split="train", cache_root=cache_root)
-    idx = np.arange(len(idrid_train))
+    idrid_val_test = IDRiDDataset(task="segmentation", transform=EVAL_TRANSFORM, split="test", cache_root=cache_root)
+
+    pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test])
+    pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test])
+    idx = np.arange(len(pool_train))
     train_idx, val_idx = train_test_split(idx, test_size=0.2, random_state=SEED)
-    train_subset = Subset(idrid_train, train_idx.tolist())
-    val_subset = Subset(idrid_val, val_idx.tolist())
+    train_subset = Subset(pool_train, train_idx.tolist())
+    val_subset = Subset(pool_val, val_idx.tolist())
     print(f"Seg Train: {len(train_subset)} | Seg Val: {len(val_subset)}")
     return (
         DataLoader(train_subset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True),

@@ -28,6 +28,8 @@ REFERRAL_MAP = {
     4: {"recommended": True, "urgency": "immediate — within 24 hours"},
 }
 
+SEG_VIS_THRESHOLD = 0.40
+
 
 def make_session(model_path):
     available = ort.get_available_providers()
@@ -74,7 +76,7 @@ class DRPredictor:
 
     def _segment(self, input_tensor):
         logits = self.segmenter.run(None, {self.segmenter.get_inputs()[0].name: input_tensor})[0][0]
-        return (1 / (1 + np.exp(-logits)) > 0.5).astype(np.uint8)
+        return (1 / (1 + np.exp(-logits)) > SEG_VIS_THRESHOLD).astype(np.uint8)
 
     def _encode_png(self, img):
         ok, buf = cv2.imencode(".png", img)
