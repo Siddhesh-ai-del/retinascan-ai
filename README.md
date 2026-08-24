@@ -115,7 +115,7 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 | Classifier ONNX latency | 77 ms |
 | Segmenter ONNX latency | 150 ms |
 | Demo-set screening accuracy | **5/5 stages correct** |
-| Parameters | 8.4M classifier · 14.3M segmenter |
+| Parameters | 8.1M classifier · 12.5M segmenter |
 
 ## 🌐 API
 
