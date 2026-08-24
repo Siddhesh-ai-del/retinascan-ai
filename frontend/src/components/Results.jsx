@@ -4,7 +4,7 @@ import FhirExport from './FhirExport';
 
 const STAGE_COLORS = ['#2ecc71', '#a3e635', '#f59e0b', '#f97316', '#ef4444'];
 
-export default function Results({ result, patientId }) {
+export default function Results({ result, meta, patientId }) {
   const { classification, segmentation, referral, quality } = result;
 
   if (result.status === 'rejected') {
@@ -24,6 +24,9 @@ export default function Results({ result, patientId }) {
 
   return (
     <section className="results-section">
+      {meta?.latencyMs != null && (
+        <div className="latency-strip">⚡ Analyzed in {(meta.latencyMs / 1000).toFixed(2)}s · fundus score {quality.fundus_score ?? '—'}</div>
+      )}
       <div className="results-grid">
         <div className="card overlay-card">
           <LesionOverlay segmentation={segmentation} />

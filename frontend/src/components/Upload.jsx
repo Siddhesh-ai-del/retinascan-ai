@@ -46,9 +46,10 @@ export default function Upload({ onResult, previewUrl, setPreviewUrl, patientId,
       }
 
       setStage('predicting');
+      const t0 = performance.now();
       const res = await axios.post(`${API_URL}/api/predict?patient_id=${encodeURIComponent(patientId)}`, form);
       setStage('done');
-      onResult(res.data);
+      onResult(res.data, Math.round(performance.now() - t0));
     } catch (err) {
       setStage('idle');
       const detail = err.response?.data?.detail || err.message;
