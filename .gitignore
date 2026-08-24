@@ -17,3 +17,6 @@ nohup.out
 # internal strategy docs (kept local)
 IMPLEMENTATION_PLAN.md
 Comprehensive*.md
+
+# local rebuild blueprint (not published)
+blueprint/
