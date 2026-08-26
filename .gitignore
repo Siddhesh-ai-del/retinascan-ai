@@ -30,3 +30,5 @@ sih_logo.png
 # local rebuild blueprint (not published)
 blueprint/
 OP_PLAN.md
+data/server.log
+*.log
