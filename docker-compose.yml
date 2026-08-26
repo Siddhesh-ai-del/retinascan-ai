@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: retinascan-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # persists sqlite visit history + preprocess cache across restarts
+      - retinascan-data:/app/data
+    environment:
+      # optional hardening:
+      # - RETINASCAN_API_KEY=change-me
+      # - RETINASCAN_MAX_UPLOAD_MB=10
+      # - RETINASCAN_RATE_LIMIT_PER_MIN=30
+      - RETINASCAN_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: retinascan-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  retinascan-data:
