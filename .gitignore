@@ -32,3 +32,4 @@ blueprint/
 OP_PLAN.md
 data/server.log
 *.log
+data/retinascan.db
