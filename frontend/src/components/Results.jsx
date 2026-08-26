@@ -2,6 +2,7 @@ import React from 'react';
 import { TriangleAlert, CircleCheck, Zap, Eye, FileDown } from 'lucide-react';
 import LesionOverlay from './LesionOverlay';
 import FhirExport from './FhirExport';
+import TimelineCard from './TimelineCard';
 import { API_URL, stageColor as stageColorFor } from '../config';
 
 export default function Results({ result, meta, patientId, attention }) {
@@ -114,6 +115,8 @@ export default function Results({ result, meta, patientId, attention }) {
                   : `Routine follow-up: ${referral.urgency}.`}
             </p>
           </div>
+
+          <TimelineCard patientId={patientId} refreshKey={result} />
 
           <FhirExport fhir={result.fhir} patientId={patientId} />
 

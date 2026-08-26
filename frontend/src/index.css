@@ -345,6 +345,36 @@ h1, h2, h3, h4 {
   text-decoration: none;
 }
 
+.timeline-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+}
+
+.timeline-eye {
+  padding: 8px 0;
+  border-top: 1px solid var(--card-edge);
+}
+
+.timeline-eye:first-of-type { border-top: none; }
+
+.timeline-eye-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.timeline-eye-name { font-size: 13px; font-weight: 600; }
+
+.timeline-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
 .hint { text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
 code {
   background: var(--bg-soft);

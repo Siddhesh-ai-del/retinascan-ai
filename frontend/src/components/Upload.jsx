@@ -22,6 +22,7 @@ function extractErrorDetail(err) {
 
 export default function Upload({ onResult, onAttention, previewUrl, setPreviewUrl, patientId, setPatientId }) {
   const [file, setFile] = useState(null);
+  const [eye, setEye] = useState('unknown');
   const [dragging, setDragging] = useState(false);
   const [stage, setStage] = useState('idle');
   const [message, setMessage] = useState(null);
@@ -70,6 +71,7 @@ export default function Upload({ onResult, onAttention, previewUrl, setPreviewUr
 
       setStage('predicting');
       const t0 = performance.now();
+      form.append('eye', eye);
       const res = await axios.post(
         `${API_URL}/api/predict?patient_id=${encodeURIComponent(patientId)}`,
         form,
@@ -161,6 +163,14 @@ export default function Upload({ onResult, onAttention, previewUrl, setPreviewUr
         <label className="field">
           <span>Patient ID</span>
           <input value={patientId} onChange={(e) => setPatientId(e.target.value)} placeholder="PT-0001" />
+        </label>
+        <label className="field">
+          <span>Eye</span>
+          <select value={eye} onChange={(e) => setEye(e.target.value)}>
+            <option value="unknown">Not specified</option>
+            <option value="L">Left (OS)</option>
+            <option value="R">Right (OD)</option>
+          </select>
         </label>
         <button className="btn btn-primary btn-lg" disabled={!file || busy} onClick={analyze}>
           {busy ? 'Analyzing…' : 'Analyze Image'}

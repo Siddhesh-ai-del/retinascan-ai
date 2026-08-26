@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import Optional
 
 import anyio
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 
 from src.constants import CLASS_NAMES
+from src.history import VisitStore, fhir_to_json
 from src.inference.explain import explain_preprocessed
 from src.inference.predictor import DRPredictor
 from src.report.pdf import generate_pdf_report
@@ -23,6 +24,7 @@ logger = logging.getLogger("retinascan.api")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 DEMO_DIR = PROJECT_ROOT / "demo_images"
+DB_PATH = PROJECT_ROOT / "data" / "retinascan.db"
 CLASSIFIER_FP32 = PROJECT_ROOT / "models" / "onnx" / "classifier.onnx"
 CLASSIFIER_INT8 = PROJECT_ROOT / "models" / "onnx" / "classifier_int8.onnx"
 SEGMENTER_FP32 = PROJECT_ROOT / "models" / "onnx" / "segmenter.onnx"
@@ -41,6 +43,7 @@ FHIR_CACHE_MAX = 256
 UPLOAD_CHUNK = 1024 * 1024
 
 predictor: Optional[DRPredictor] = None
+visits: Optional[VisitStore] = None
 # Full predict payloads per patient (FHIR doc, images, review flag, attention heatmap).
 results_cache: "OrderedDict[str, dict]" = OrderedDict()
 _rate_bucket: dict = defaultdict(deque)
@@ -54,9 +57,10 @@ def _pick(fp32: Path, int8: Path) -> Optional[Path]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global predictor
+    global predictor, visits
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    visits = VisitStore(DB_PATH)
     classifier_path = _pick(CLASSIFIER_FP32, CLASSIFIER_INT8)
     segmenter_path = _pick(SEGMENTER_FP32, SEGMENTER_INT8)
     predictor = DRPredictor(classifier_path, segmenter_path)
@@ -156,11 +160,18 @@ async def _save_and_keep(file: UploadFile) -> Path:
 
 
 @app.post("/api/predict")
-async def predict(request: Request, file: UploadFile = File(...), patient_id: str = ""):
+async def predict(
+    request: Request,
+    file: UploadFile = File(...),
+    patient_id: str = "",
+    eye: str = Form("unknown"),
+):
     _check_auth(request)
     _check_rate_limit(request)
     if predictor is None or not predictor.is_ready():
         raise HTTPException(status_code=503, detail="Models not loaded yet. Train models and run ONNX export first.")
+    if eye not in ("L", "R", "unknown"):
+        raise HTTPException(status_code=400, detail="eye must be one of: L, R, unknown")
     pid = patient_id or "anonymous"
     path = await _save_and_keep(file)
     try:
@@ -175,7 +186,28 @@ async def predict(request: Request, file: UploadFile = File(...), patient_id: st
 
     if result.get("fhir"):
         _cache_result(pid, {**result, "patient_id": pid})
+    if result.get("status") == "ok" and visits is not None:
+        cls = result.get("classification") or {}
+        try:
+            visits.add_visit(
+                pid,
+                eye,
+                cls.get("stage"),
+                cls.get("confidence"),
+                bool(result.get("needs_human_review")),
+                fhir_to_json(result.get("fhir")),
+            )
+        except Exception as e:
+            logger.warning("Visit store write failed (non-fatal): %s", e)
     return result
+
+
+@app.get("/api/patients/{patient_id}/timeline")
+async def patient_timeline(request: Request, patient_id: str):
+    _check_auth(request)
+    if visits is None:
+        raise HTTPException(status_code=503, detail="History store unavailable.")
+    return visits.timeline(patient_id)
 
 
 @app.post("/api/explain")
