@@ -1,15 +1,13 @@
 import base64
-import json
 
 import cv2
 import numpy as np
 import onnxruntime as ort
 
+from src.constants import CLASS_NAMES
 from src.data.preprocess import IMAGENET_MEAN, IMAGENET_STD, get_cached_uint8
 from src.fhir.generator import generate_fhir_report
 from src.quality.iqa import ImageQualityAssessor
-
-CLASS_NAMES = ["No DR", "Mild NPDR", "Moderate NPDR", "Severe NPDR", "Proliferative DR"]
 
 LESION_NAMES = ["Microaneurysms", "Hemorrhages", "Hard Exudates", "Cotton Wool Spots"]
 LESION_KEYS = ["microaneurysms", "hemorrhages", "hard_exudates", "cotton_wool_spots"]
@@ -29,6 +27,8 @@ REFERRAL_MAP = {
 }
 
 SEG_VIS_THRESHOLD = 0.40
+OVERLAY_ALPHA = 0.65
+LESION_PIXEL_THRESHOLD = 25
 
 
 def make_session(model_path):
@@ -95,7 +95,7 @@ class DRPredictor:
                 layer[region, 0] = b
                 layer[region, 1] = g
                 layer[region, 2] = r
-                layer[region, 3] = int(255 * 0.65)
+                layer[region, 3] = int(255 * OVERLAY_ALPHA)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 cv2.drawContours(layer, contours, -1, (b, g, r, 255), 1)
             key = LESION_KEYS[i]
@@ -107,7 +107,7 @@ class DRPredictor:
         for i, mask in enumerate(masks):
             region = mask.astype(bool)
             r, g, b = LESION_COLORS_RGB[i]
-            a = 0.65
+            a = OVERLAY_ALPHA
             m = region.astype(np.float32) * a
             newly = np.clip(a - alpha_acc, 0, 1) * region
             color_acc += np.stack([np.full((h, w), b), np.full((h, w), g), np.full((h, w), r)], axis=-1) * newly[..., None]
@@ -145,11 +145,11 @@ class DRPredictor:
         if masks is not None:
             for i, (key, name) in enumerate(zip(LESION_KEYS, LESION_NAMES)):
                 count = int(masks[i].sum())
-                lesion_summary[key] = {"detected": bool(count > 25), "pixels": count, "name": name}
+                lesion_summary[key] = {"detected": bool(count > LESION_PIXEL_THRESHOLD), "pixels": count, "name": name}
 
         overlay_b64 = overlay_pack["combined_overlay"] if overlay_pack else None
 
-        referral = REFERRAL_MAP[classification["stage"]] if classification else None
+        referral = REFERRAL_MAP.get(classification["stage"], {"recommended": True, "urgency": "refer to ophthalmologist — unrecognised stage"}) if classification else None
 
         fhir = generate_fhir_report(patient_id, classification, lesion_summary) if classification else None
 

@@ -1,5 +1,5 @@
 import argparse
-import shutil
+import os
 import zipfile
 from pathlib import Path
 
@@ -40,13 +40,23 @@ def check_kaggle_credentials() -> bool:
     return False
 
 
+def _safe_extract(zf: zipfile.ZipFile, dest: Path):
+    """Extract while rejecting zip-slip entries that escape `dest`."""
+    dest = dest.resolve()
+    for member in zf.infolist():
+        target = (dest / member.filename).resolve()
+        if not str(target).startswith(str(dest) + os.sep) and target != dest:
+            raise ValueError(f"Blocked unsafe zip entry: {member.filename}")
+    zf.extractall(dest)
+
+
 def _unzip_all(folder: Path):
     for z in sorted(folder.glob("**/*.zip")):
         target = z.parent / z.stem
         if not target.exists():
             print(f"Extracting {z.name} ...")
             with zipfile.ZipFile(z) as zf:
-                zf.extractall(z.parent)
+                _safe_extract(zf, z.parent)
         try:
             z.unlink()
         except OSError:

@@ -1,0 +1,39 @@
+# RetinaScan AI — pinned dependencies (verified against venv, Python 3.12)
+# NOTE: torch/torchvision installed here are the CUDA 12.4 builds (+cu124).
+#       For CPU-only machines use: pip install torch==2.6.0 torchvision==0.21.0
+
+# --- deep learning ---
+torch==2.6.0
+torchvision==0.21.0
+segmentation-models-pytorch==0.5.0
+timm==1.0.28
+efficientnet_pytorch==0.7.1 ; python_version < "3.12"  # optional legacy alt
+
+# --- inference / export ---
+onnxruntime==1.29.0
+onnx==1.22.0
+
+# --- vision & data ---
+opencv-python-headless==5.0.0.93
+albumentations==2.0.8
+numpy==2.5.2
+pandas==3.0.5
+pillow==12.3.0
+scikit-learn==1.9.0
+matplotlib==3.11.1
+seaborn==0.13.2
+
+# --- API server ---
+fastapi==0.141.1
+uvicorn==0.52.4
+python-multipart==0.0.32
+aiofiles==25.1.0
+httpx==0.28.1
+
+# --- data download ---
+kaggle==2.2.4
+requests==2.34.2
+tqdm==4.70.0
+
+# --- presentation tooling (optional) ---
+python-pptx==1.0.2

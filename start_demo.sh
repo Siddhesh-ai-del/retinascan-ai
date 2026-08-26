@@ -4,6 +4,13 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+LOG_DIR="$PROJECT_DIR/logs"
+mkdir -p "$LOG_DIR"
+
+if ! command -v curl &>/dev/null; then
+    echo -e "${RED}ERROR: curl is required but not installed.${NC}"
+    exit 1
+fi
 
 port_up() { curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1" ; }
 
@@ -29,8 +36,8 @@ if port_up 8000; then
     echo -e "${YELLOW}Backend already running on :8000 — reusing it${NC}"
 else
     echo "Starting backend on :8000 ..."
-    setsid nohup venv/bin/uvicorn src.api.server:app --host 0.0.0.0 --port 8000 \
-        </dev/null > /tmp/opencode/backend.log 2>&1 &
+    setsid nohup venv/bin/uvicorn src.api.server:app --host 127.0.0.1 --port 8000 \
+        </dev/null > "$LOG_DIR/backend.log" 2>&1 &
     disown
 fi
 
@@ -41,7 +48,7 @@ for i in $(seq 1 30); do
         break
     fi
     if [ "$i" -eq 30 ]; then
-        echo -e "${RED}ERROR: backend did not become healthy. Check /tmp/opencode/backend.log${NC}"
+        echo -e "${RED}ERROR: backend did not become healthy. Check $LOG_DIR/backend.log${NC}"
         exit 1
     fi
     sleep 1
@@ -52,7 +59,7 @@ if port_up 3000; then
 else
     echo "Starting frontend on :3000 ..."
     setsid nohup bash -c "cd '$PROJECT_DIR/frontend' && npm start" \
-        </dev/null > /tmp/opencode/frontend.log 2>&1 &
+        </dev/null > "$LOG_DIR/frontend.log" 2>&1 &
     disown
 fi
 
@@ -62,7 +69,7 @@ for i in $(seq 1 60); do
         break
     fi
     if [ "$i" -eq 60 ]; then
-        echo -e "${RED}ERROR: frontend did not start. Check /tmp/opencode/frontend.log${NC}"
+        echo -e "${RED}ERROR: frontend did not start. Check $LOG_DIR/frontend.log${NC}"
         exit 1
     fi
     sleep 1

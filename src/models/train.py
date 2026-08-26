@@ -27,13 +27,12 @@ from src.data.dataset import (
     NUM_CLASSES,
     build_combined_dataset,
 )
+from src.constants import CLASS_NAMES
 from src.models.classifier import DRClassifier
 from src.models.segmenter import LesionSegmenter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SEED = 42
-
-CLASS_NAMES = ["No DR", "Mild NPDR", "Moderate NPDR", "Severe NPDR", "Proliferative DR"]
 
 
 def set_seed(seed=SEED):

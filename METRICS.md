@@ -25,7 +25,7 @@ Full per-class report: `models/classification/classification_report.txt` · conf
 ## Lesion Segmentation (U-Net)
 
 **Model:** U-Net with ResNet18 ImageNet encoder, decoder (128→8), 4 output channels
-**Data:** IDRiD pixel-level lesion annotations — Microaneurysms, Haemorrhages, Hard Exudates, Soft Exudates
+**Data:** IDRiD pixel-level lesion annotations — Microaneurysms, Haemorrhages, Hard Exudates, Cotton Wool Spots
 **Loss:** 2×Dice(multilabel) + 0.5×BCE(pos_weight [31,10,11,23]) · **Val dice:** **0.2066** (100 epochs)
 
 > Honest note: only 81 annotated images exist in IDRiD's segmentation subset; dice is computed at threshold 0.5 on an 80/20 split. Exudates and hemorrhages localize reliably; microaneurysms and cotton-wool spots remain sparse. Visualization runs at threshold 0.40 for overlay recall.

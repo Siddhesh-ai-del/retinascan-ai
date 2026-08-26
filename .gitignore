@@ -10,6 +10,8 @@ models/onnx/benchmark_results.json
 frontend/node_modules/
 frontend/build/
 frontend/.eslintcache
+logs/
+*.pptx
 .env
 .DS_Store
 nohup.out
@@ -17,6 +19,13 @@ nohup.out
 # internal strategy docs (kept local)
 IMPLEMENTATION_PLAN.md
 Comprehensive*.md
+
+# presentation tooling (kept local)
+create_ppt.py
+export_pdf.sh
+PPT_CONTENT.md
+sih_logo.png
+*.pptx
 
 # local rebuild blueprint (not published)
 blueprint/
