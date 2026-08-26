@@ -1,8 +1,8 @@
 import React from 'react';
-import { TriangleAlert, CircleCheck, Zap, Eye } from 'lucide-react';
+import { TriangleAlert, CircleCheck, Zap, Eye, FileDown } from 'lucide-react';
 import LesionOverlay from './LesionOverlay';
 import FhirExport from './FhirExport';
-import { stageColor as stageColorFor } from '../config';
+import { API_URL, stageColor as stageColorFor } from '../config';
 
 export default function Results({ result, meta, patientId, attention }) {
   const { classification, segmentation, referral, quality } = result;
@@ -116,6 +116,15 @@ export default function Results({ result, meta, patientId, attention }) {
           </div>
 
           <FhirExport fhir={result.fhir} patientId={patientId} />
+
+          <a
+            className="btn btn-outline report-btn"
+            href={`${API_URL}/api/report/${encodeURIComponent(patientId)}.pdf`}
+            download
+          >
+            <FileDown size={14} strokeWidth={2} />
+            Download Report (PDF)
+          </a>
         </div>
       </div>
 

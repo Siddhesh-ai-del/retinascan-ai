@@ -30,6 +30,10 @@ python-multipart==0.0.32
 aiofiles==25.1.0
 httpx==0.28.1
 
+# --- clinical PDF report ---
+reportlab==5.0.1
+qrcode==8.2
+
 # --- data download ---
 kaggle==2.2.4
 requests==2.34.2

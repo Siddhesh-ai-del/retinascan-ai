@@ -11,11 +11,12 @@ from typing import Optional
 import anyio
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from src.constants import CLASS_NAMES
 from src.inference.explain import explain_preprocessed
 from src.inference.predictor import DRPredictor
+from src.report.pdf import generate_pdf_report
 
 logger = logging.getLogger("retinascan.api")
 
@@ -40,7 +41,8 @@ FHIR_CACHE_MAX = 256
 UPLOAD_CHUNK = 1024 * 1024
 
 predictor: Optional[DRPredictor] = None
-fhir_cache: "OrderedDict[str, dict]" = OrderedDict()
+# Full predict payloads per patient (FHIR doc, images, review flag, attention heatmap).
+results_cache: "OrderedDict[str, dict]" = OrderedDict()
 _rate_bucket: dict = defaultdict(deque)
 
 
@@ -120,11 +122,11 @@ def _save_upload(file: UploadFile) -> Path:
     return path
 
 
-def _cache_fhir(patient_id: str, report: dict) -> None:
-    fhir_cache.pop(patient_id, None)
-    fhir_cache[patient_id] = report
-    while len(fhir_cache) > FHIR_CACHE_MAX:
-        fhir_cache.popitem(last=False)
+def _cache_result(patient_id: str, payload: dict) -> None:
+    results_cache.pop(patient_id, None)
+    results_cache[patient_id] = payload
+    while len(results_cache) > FHIR_CACHE_MAX:
+        results_cache.popitem(last=False)
 
 
 @app.get("/api/health")
@@ -172,12 +174,12 @@ async def predict(request: Request, file: UploadFile = File(...), patient_id: st
         path.unlink(missing_ok=True)
 
     if result.get("fhir"):
-        _cache_fhir(pid, result["fhir"])
+        _cache_result(pid, {**result, "patient_id": pid})
     return result
 
 
 @app.post("/api/explain")
-async def explain(request: Request, file: UploadFile = File(...)):
+async def explain(request: Request, file: UploadFile = File(...), patient_id: str = ""):
     """Grad-CAM attention heatmap for the predicted ICDR stage."""
     _check_auth(request)
     _check_rate_limit(request)
@@ -194,6 +196,10 @@ async def explain(request: Request, file: UploadFile = File(...)):
 
         heatmap_b64, stage = await anyio.to_thread.run_sync(_run_cam)
         label = CLASS_NAMES[stage] if 0 <= stage < len(CLASS_NAMES) else f"Stage {stage}"
+        if patient_id and heatmap_b64:
+            cached = results_cache.get(patient_id)
+            if cached is not None:
+                cached["attention"] = heatmap_b64
         return {"heatmap": heatmap_b64, "stage": stage, "label": label}
     except HTTPException:
         raise
@@ -207,10 +213,35 @@ async def explain(request: Request, file: UploadFile = File(...)):
 @app.get("/api/fhir/{patient_id}")
 async def get_fhir_report(request: Request, patient_id: str):
     _check_auth(request)
-    report = fhir_cache.get(patient_id)
+    report = (results_cache.get(patient_id) or {}).get("fhir")
     if report is None:
         raise HTTPException(status_code=404, detail=f"No FHIR report cached for patient '{patient_id}'. Run a prediction first.")
     return report
+
+
+@app.get("/api/report/{patient_id}.pdf")
+async def get_pdf_report(request: Request, patient_id: str):
+    _check_auth(request)
+    payload = results_cache.get(patient_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail=f"No prediction cached for patient '{patient_id}'. Run a prediction first.")
+    try:
+
+        def _build():
+            return generate_pdf_report(payload)
+
+        pdf_bytes = await anyio.to_thread.run_sync(_build)
+    except Exception as e:
+        logger.exception("PDF generation failed for patient '%s'", patient_id)
+        raise HTTPException(status_code=500, detail="Could not generate PDF report") from e
+    filename = f'RetinaScanAI_{patient_id}_{payload.get("_generated_ts", "report")}.pdf'
+    from urllib.parse import quote
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @app.get("/api/demo-images")

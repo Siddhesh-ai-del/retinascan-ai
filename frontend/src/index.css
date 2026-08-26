@@ -337,6 +337,14 @@ h1, h2, h3, h4 {
   white-space: nowrap;
 }
 
+.report-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  text-decoration: none;
+}
+
 .hint { text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
 code {
   background: var(--bg-soft);

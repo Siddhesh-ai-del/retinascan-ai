@@ -82,7 +82,7 @@ export default function Upload({ onResult, onAttention, previewUrl, setPreviewUr
          delays screening; failure just means no heatmap layer. */
       if (onAttention) {
         axios
-          .post(`${API_URL}/api/explain`, form, { timeout: REQUEST_TIMEOUT })
+          .post(`${API_URL}/api/explain?patient_id=${encodeURIComponent(patientId)}`, form, { timeout: REQUEST_TIMEOUT })
           .then((a) => onAttention(a.data?.heatmap || null))
           .catch(() => onAttention(null));
       }
