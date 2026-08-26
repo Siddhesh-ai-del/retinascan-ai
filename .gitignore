@@ -19,6 +19,7 @@ nohup.out
 # internal strategy docs (kept local)
 IMPLEMENTATION_PLAN.md
 Comprehensive*.md
+UPGRADE_PLAN.md
 
 # presentation tooling (kept local)
 create_ppt.py
