@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { TriangleAlert, CircleCheck, Zap } from 'lucide-react';
 import LesionOverlay from './LesionOverlay';
 import FhirExport from './FhirExport';
-
-const STAGE_COLORS = ['#2ecc71', '#a3e635', '#f59e0b', '#f97316', '#ef4444'];
+import { stageColor as stageColorFor } from '../config';
 
 export default function Results({ result, meta, patientId }) {
   const { classification, segmentation, referral, quality } = result;
@@ -12,20 +12,36 @@ export default function Results({ result, meta, patientId }) {
       <section className="results-section">
         <div className="alert alert-error">
           <h3>Image not gradable</h3>
-          <p>{quality.feedback}</p>
-          <p className="small">Issues detected: {quality.quality_issues.join(', ')}</p>
+          <p>{quality?.feedback}</p>
+          <p className="small">Issues detected: {(quality?.quality_issues || []).join(', ')}</p>
+        </div>
+      </section>
+    );
+  }
+
+  /* Guard against malformed success payloads — render the existing error
+     style instead of crashing the whole app on a missing field. */
+  if (!classification || !referral || !quality) {
+    return (
+      <section className="results-section">
+        <div className="alert alert-error">
+          <h3>Incomplete analysis result</h3>
+          <p>The server returned an unexpected response. Please try again.</p>
         </div>
       </section>
     );
   }
 
   const stage = classification.stage;
-  const stageColor = STAGE_COLORS[stage];
+  const stageColor = stageColorFor(stage);
 
   return (
     <section className="results-section">
       {meta?.latencyMs != null && (
-        <div className="latency-strip">⚡ Analyzed in {(meta.latencyMs / 1000).toFixed(2)}s · fundus score {quality.fundus_score ?? '—'}</div>
+        <div className="latency-strip">
+          <Zap size={13} strokeWidth={2} />
+          Analyzed in {(meta.latencyMs / 1000).toFixed(2)}s · fundus score {quality.fundus_score ?? '—'}
+        </div>
       )}
       <div className="results-grid">
         <div className="card overlay-card">
@@ -51,7 +67,7 @@ export default function Results({ result, meta, patientId }) {
                   <div className="conf-track">
                     <div
                       className="conf-fill"
-                      style={{ width: `${(p * 100).toFixed(1)}%`, background: STAGE_COLORS[i] }}
+                      style={{ width: `${(p * 100).toFixed(1)}%`, background: stageColorFor(i) }}
                     />
                   </div>
                   <span className="conf-val">{(p * 100).toFixed(1)}%</span>
@@ -61,7 +77,17 @@ export default function Results({ result, meta, patientId }) {
           </div>
 
           <div className={`card referral-card ${referral.recommended ? 'urgent' : 'ok'}`}>
-            <h3>{referral.recommended ? '⚠ Referral Recommended' : '✓ No Urgent Referral Needed'}</h3>
+            <h3>
+              {referral.recommended ? (
+                <>
+                  <TriangleAlert size={17} strokeWidth={2} /> Referral Recommended
+                </>
+              ) : (
+                <>
+                  <CircleCheck size={17} strokeWidth={2} /> No Urgent Referral Needed
+                </>
+              )}
+            </h3>
             <p>
               {referral.recommended
                 ? `Refer to ophthalmologist ${referral.urgency}.`
@@ -74,7 +100,7 @@ export default function Results({ result, meta, patientId }) {
       </div>
 
       <div className="quality-strip">
-        <span>Quality: gradable ✓</span>
+        <span>Quality: gradable</span>
         <span>Blur score: {quality.blur_score}</span>
         <span>Brightness: {quality.brightness}</span>
         <span>Model confidence: {(classification.confidence * 100).toFixed(1)}%</span>

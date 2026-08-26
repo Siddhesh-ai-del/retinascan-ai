@@ -1,11 +1,19 @@
 import React from 'react';
+import {
+  ShieldCheck,
+  Palette,
+  Brain,
+  ScanSearch,
+  FileText,
+  MoveRight,
+} from 'lucide-react';
 
 const STEPS = [
-  { icon: '🛡️', title: 'Quality Gate', text: 'Blur, brightness, glare + fundus-likelihood checks reject unusable images with recapture guidance.' },
-  { icon: '🎨', title: 'Preprocess', text: 'CLAHE contrast enhancement → green-channel extraction → pupil-centered crop → 512×512.' },
-  { icon: '🧠', title: 'Classify', text: 'EfficientNet-B2 grades severity into the 5 ICDR stages with calibrated confidence.' },
-  { icon: '🔬', title: 'Segment', text: 'U-Net (ResNet18) localizes microaneurysms, hemorrhages, exudates and cotton-wool spots.' },
-  { icon: '🏥', title: 'Report', text: 'Referral urgency guidance + HL7 FHIR R4 DiagnosticReport with SNOMED CT coding.' },
+  { icon: ShieldCheck, title: 'Quality Gate', text: 'Blur, brightness, glare + fundus-likelihood checks reject unusable images with recapture guidance.' },
+  { icon: Palette, title: 'Preprocess', text: 'CLAHE contrast enhancement → green-channel extraction → pupil-centered crop → 512×512.' },
+  { icon: Brain, title: 'Classify', text: 'EfficientNet-B2 grades severity into the 5 ICDR stages with calibrated confidence.' },
+  { icon: ScanSearch, title: 'Segment', text: 'U-Net (ResNet18) localizes microaneurysms, hemorrhages, exudates and cotton-wool spots.' },
+  { icon: FileText, title: 'Report', text: 'Referral urgency guidance + HL7 FHIR R4 DiagnosticReport with SNOMED CT coding.' },
 ];
 
 const MODELS = [
@@ -18,7 +26,7 @@ const MODELS = [
       ['ONNX latency', '77 ms'],
       ['Training data', 'IDRiD + APTOS'],
     ],
-    accent: '#3b82f6',
+    accent: '#647fbe',
   },
   {
     name: 'Lesion Segmenter',
@@ -29,7 +37,7 @@ const MODELS = [
       ['ONNX latency', '157 ms'],
       ['Lesion classes', 'MA · HE · EX · CWS'],
     ],
-    accent: '#2ecc71',
+    accent: '#4a9377',
   },
 ];
 
@@ -37,19 +45,29 @@ export default function HowItWorks() {
   return (
     <div className="how-section">
       <h2 className="section-title">How It Works</h2>
+      <p className="section-sub">From fundus photograph to FHIR report</p>
 
       <div className="pipeline">
-        {STEPS.map((s, i) => (
-          <React.Fragment key={s.title}>
-            <div className="pipe-card">
-              <div className="pipe-icon">{s.icon}</div>
-              <div className="pipe-step">STEP {i + 1}</div>
-              <h4>{s.title}</h4>
-              <p>{s.text}</p>
-            </div>
-            {i < STEPS.length - 1 && <div className="pipe-arrow">→</div>}
-          </React.Fragment>
-        ))}
+        {STEPS.map((s, i) => {
+          const Icon = s.icon;
+          return (
+            <React.Fragment key={s.title}>
+              <div className="pipe-card">
+                <div className="pipe-icon">
+                  <Icon size={19} strokeWidth={1.6} />
+                </div>
+                <div className="pipe-step">STEP {i + 1}</div>
+                <h4>{s.title}</h4>
+                <p>{s.text}</p>
+              </div>
+              {i < STEPS.length - 1 && (
+                <div className="pipe-arrow">
+                  <MoveRight size={18} strokeWidth={1.5} />
+                </div>
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       <div className="model-cards">

@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function LesionOverlay({ segmentation }) {
-  const [active, setActive] = useState(() =>
-    Object.fromEntries((segmentation.legend || []).map((l) => [l.key, true]))
-  );
+  const allOn = (seg) => Object.fromEntries((seg?.legend || []).map((l) => [l.key, true]));
+  const [active, setActive] = useState(() => allOn(segmentation));
+
+  /* New analysis result → reset every lesion toggle to visible. */
+  useEffect(() => {
+    setActive(allOn(segmentation));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentation]);
 
   const toggle = (key) => setActive((a) => ({ ...a, [key]: !a[key] }));
 
   if (!segmentation || !segmentation.original) return <p className="muted">Segmentation unavailable.</p>;
 
-  const { original, overlays, legend, lesions } = segmentation;
+  const { original, overlays, legend = [], lesions = {} } = segmentation;
 
   return (
     <div className="overlay-wrap">
