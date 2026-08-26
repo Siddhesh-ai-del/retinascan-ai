@@ -37,8 +37,10 @@ Full per-class report: `models/classification/classification_report.txt` · conf
 | Classifier (512² input) | **77 ms** | 498 ms |
 | Segmenter (512² input) | **157 ms** | 2,037 ms |
 | **End-to-end API call** (IQA + preprocess + both models + overlays + FHIR) | **≈ 0.39 s** | — |
+| Grad-CAM `/api/explain` (PyTorch .pth, CPU, lazy-loaded) | **≈ 0.35 s** | — |
 
 INT8 dynamic quantization reduces model size ~4× but is slower on this CPU — the server auto-prefers FP32.
+Grad-CAM runs as a separate async request after the main result, so screening latency is unaffected.
 
 ## IQA Validation Gauntlet
 
