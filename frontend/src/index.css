@@ -316,6 +316,27 @@ h1, h2, h3, h4 {
   color: var(--text);
 }
 
+.alert-warn {
+  background: rgba(201, 150, 50, 0.09);
+  border-color: rgba(201, 150, 50, 0.4);
+  color: #6e5320;
+}
+
+.alert-warn h3 { margin: 0 0 6px; color: var(--warn-deep); font-size: 17px; }
+.alert-warn p { color: inherit; }
+
+.review-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(201, 150, 50, 0.14);
+  color: var(--warn-deep);
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .hint { text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
 code {
   background: var(--bg-soft);

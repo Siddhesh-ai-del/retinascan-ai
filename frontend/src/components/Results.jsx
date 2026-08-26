@@ -1,5 +1,5 @@
 import React from 'react';
-import { TriangleAlert, CircleCheck, Zap } from 'lucide-react';
+import { TriangleAlert, CircleCheck, Zap, Eye } from 'lucide-react';
 import LesionOverlay from './LesionOverlay';
 import FhirExport from './FhirExport';
 import { stageColor as stageColorFor } from '../config';
@@ -37,6 +37,19 @@ export default function Results({ result, meta, patientId }) {
 
   return (
     <section className="results-section">
+      {result.needs_human_review && (
+        <div className="alert alert-warn">
+          <h3>
+            <Eye size={17} strokeWidth={2} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+            Manual review recommended
+          </h3>
+          <p>
+            Model confidence is below the abstention threshold
+            {result.review_reasons?.includes('borderline_fundus_quality') ? ' and image quality is borderline' : ''}.
+            The stage shown below is a flagged suggestion only — a clinician must confirm before any clinical decision.
+          </p>
+        </div>
+      )}
       {meta?.latencyMs != null && (
         <div className="latency-strip">
           <Zap size={13} strokeWidth={2} />
@@ -57,6 +70,11 @@ export default function Results({ result, meta, patientId }) {
               </div>
               <div className="grade-badge" style={{ background: stageColor }}>
                 Stage {stage}
+                {result.needs_human_review && (
+                  <span className="review-pill" style={{ marginLeft: 8 }}>
+                    <Eye size={11} strokeWidth={2} /> flagged
+                  </span>
+                )}
               </div>
             </div>
 
@@ -89,9 +107,11 @@ export default function Results({ result, meta, patientId }) {
               )}
             </h3>
             <p>
-              {referral.recommended
-                ? `Refer to ophthalmologist ${referral.urgency}.`
-                : `Routine follow-up: ${referral.urgency}.`}
+              {referral.overridden_by === 'abstention'
+                ? `Deferred to human review: ${referral.urgency}.`
+                : referral.recommended
+                  ? `Refer to ophthalmologist ${referral.urgency}.`
+                  : `Routine follow-up: ${referral.urgency}.`}
             </p>
           </div>
 

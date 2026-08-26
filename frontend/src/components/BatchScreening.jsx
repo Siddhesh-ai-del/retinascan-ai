@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Layers, TriangleAlert } from 'lucide-react';
+import { Layers, TriangleAlert, Eye } from 'lucide-react';
 import { API_URL, REQUEST_TIMEOUT, stageColor } from '../config';
 
 export default function BatchScreening({ onOpenResult }) {
@@ -108,6 +108,7 @@ export default function BatchScreening({ onOpenResult }) {
               <th>Patient image</th>
               <th>ICDR stage</th>
               <th>Confidence</th>
+              <th>Review</th>
               <th>Referral</th>
               <th>Status</th>
               <th></th>
@@ -135,6 +136,15 @@ export default function BatchScreening({ onOpenResult }) {
                     )}
                   </td>
                   <td>{c ? `${(c.confidence * 100).toFixed(0)}%` : '—'}</td>
+                  <td>
+                    {item.result?.needs_human_review ? (
+                      <span className="review-pill">
+                        <Eye size={12} strokeWidth={2} /> review
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td className="small">
                     {ref ? (
                       ref.recommended ? (

@@ -30,6 +30,12 @@ SEG_VIS_THRESHOLD = 0.40
 OVERLAY_ALPHA = 0.65
 LESION_PIXEL_THRESHOLD = 25
 
+# Abstention: below this confidence (or in the fundus-score borderline band)
+# the case is flagged for human review instead of being trusted outright.
+CONF_ABSTAIN_THRESHOLD = 0.55
+FUNDUS_REVIEW_BAND = 0.6
+MANUAL_REVIEW_URGENCY = "manual review recommended before clinical decision"
+
 
 def make_session(model_path):
     available = ort.get_available_providers()
@@ -151,10 +157,29 @@ class DRPredictor:
 
         referral = REFERRAL_MAP.get(classification["stage"], {"recommended": True, "urgency": "refer to ophthalmologist — unrecognised stage"}) if classification else None
 
+        needs_review = False
+        if classification:
+            low_conf = classification["confidence"] < CONF_ABSTAIN_THRESHOLD
+            borderline_fundus = quality["fundus_score"] < FUNDUS_REVIEW_BAND
+            needs_review = bool(low_conf or borderline_fundus)
+            if needs_review and referral is not None:
+                referral = {
+                    **referral,
+                    "recommended": True,
+                    "urgency": MANUAL_REVIEW_URGENCY,
+                    "overridden_by": "abstention",
+                }
+
         fhir = generate_fhir_report(patient_id, classification, lesion_summary) if classification else None
 
         return {
             "status": "ok",
+            "needs_human_review": needs_review,
+            "review_reasons": (
+                ([r for r, hit in (("low_confidence", low_conf), ("borderline_fundus_quality", borderline_fundus)) if hit])
+                if classification
+                else []
+            ),
             "quality": quality,
             "classification": classification,
             "segmentation": {
