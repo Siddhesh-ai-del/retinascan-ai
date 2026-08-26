@@ -13,6 +13,8 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from src.constants import CLASS_NAMES
+from src.inference.explain import explain_preprocessed
 from src.inference.predictor import DRPredictor
 
 logger = logging.getLogger("retinascan.api")
@@ -24,6 +26,8 @@ CLASSIFIER_FP32 = PROJECT_ROOT / "models" / "onnx" / "classifier.onnx"
 CLASSIFIER_INT8 = PROJECT_ROOT / "models" / "onnx" / "classifier_int8.onnx"
 SEGMENTER_FP32 = PROJECT_ROOT / "models" / "onnx" / "segmenter.onnx"
 SEGMENTER_INT8 = PROJECT_ROOT / "models" / "onnx" / "segmenter_int8.onnx"
+CLASSIFIER_PTH = PROJECT_ROOT / "models" / "classification" / "best_classifier.pth"
+CAM_ENABLED = CLASSIFIER_PTH.exists()
 
 # --- configuration (env-overridable; defaults keep the local demo friction-free) ---
 API_KEY = os.environ.get("RETINASCAN_API_KEY", "").strip()  # unset => auth disabled
@@ -170,6 +174,34 @@ async def predict(request: Request, file: UploadFile = File(...), patient_id: st
     if result.get("fhir"):
         _cache_fhir(pid, result["fhir"])
     return result
+
+
+@app.post("/api/explain")
+async def explain(request: Request, file: UploadFile = File(...)):
+    """Grad-CAM attention heatmap for the predicted ICDR stage."""
+    _check_auth(request)
+    _check_rate_limit(request)
+    if predictor is None or not predictor.is_ready():
+        raise HTTPException(status_code=503, detail="Models not loaded yet. Train models and run ONNX export first.")
+    if not CAM_ENABLED:
+        raise HTTPException(status_code=503, detail="Grad-CAM unavailable: classifier checkpoint (.pth) not found.")
+    path = await _save_and_keep(file)
+    try:
+        base, input_tensor = predictor._preprocess(path)
+
+        def _run_cam():
+            return explain_preprocessed(CLASSIFIER_PTH, base, input_tensor)
+
+        heatmap_b64, stage = await anyio.to_thread.run_sync(_run_cam)
+        label = CLASS_NAMES[stage] if 0 <= stage < len(CLASS_NAMES) else f"Stage {stage}"
+        return {"heatmap": heatmap_b64, "stage": stage, "label": label}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Explain failed")
+        raise HTTPException(status_code=500, detail="Could not compute attention heatmap") from e
+    finally:
+        path.unlink(missing_ok=True)
 
 
 @app.get("/api/fhir/{patient_id}")

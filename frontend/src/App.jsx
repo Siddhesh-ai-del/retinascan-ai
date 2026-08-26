@@ -34,6 +34,7 @@ function LogoMark() {
 export default function App() {
   const [tab, setTab] = useState('single');
   const [prediction, setPrediction] = useState(null);
+  const [attentionB64, setAttentionB64] = useState(null);
   const [meta, setMeta] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [patientId, setPatientId] = useState('PT-0001');
@@ -42,6 +43,7 @@ export default function App() {
     if (previewUrl && previewUrl !== url) URL.revokeObjectURL(previewUrl);
     setPrediction(result);
     setPreviewUrl(url || null);
+    setAttentionB64(null);
     setMeta(latency !== undefined ? { latencyMs: latency } : null);
     setTab('single');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -52,6 +54,7 @@ export default function App() {
     setPrediction(null);
     setPreviewUrl(null);
     setMeta(null);
+    setAttentionB64(null);
   };
 
   return (
@@ -91,13 +94,14 @@ export default function App() {
       <main className="app-main">
         {tab === 'single' &&
           (prediction ? (
-            <Results result={prediction} meta={meta} patientId={patientId} />
+            <Results result={prediction} meta={meta} patientId={patientId} attention={attentionB64} />
           ) : (
             <Upload
               onResult={(res, latency) => {
                 setPrediction(res);
                 setMeta(latency !== undefined ? { latencyMs: latency } : null);
               }}
+              onAttention={setAttentionB64}
               previewUrl={previewUrl}
               setPreviewUrl={setPreviewUrl}
               patientId={patientId}
@@ -109,7 +113,7 @@ export default function App() {
           <BatchScreening onOpenResult={openResult} />
         )}
         {tab === 'batch' && prediction && (
-          <Results result={prediction} meta={meta} patientId={patientId} />
+          <Results result={prediction} meta={meta} patientId={patientId} attention={attentionB64} />
         )}
 
         {tab === 'about' && <HowItWorks />}

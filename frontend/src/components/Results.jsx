@@ -4,7 +4,7 @@ import LesionOverlay from './LesionOverlay';
 import FhirExport from './FhirExport';
 import { stageColor as stageColorFor } from '../config';
 
-export default function Results({ result, meta, patientId }) {
+export default function Results({ result, meta, patientId, attention }) {
   const { classification, segmentation, referral, quality } = result;
 
   if (result.status === 'rejected') {
@@ -58,7 +58,7 @@ export default function Results({ result, meta, patientId }) {
       )}
       <div className="results-grid">
         <div className="card overlay-card">
-          <LesionOverlay segmentation={segmentation} />
+          <LesionOverlay segmentation={segmentation} attention={attention} />
         </div>
 
         <div className="stack">

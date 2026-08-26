@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 
-export default function LesionOverlay({ segmentation }) {
+export default function LesionOverlay({ segmentation, attention }) {
   const allOn = (seg) => Object.fromEntries((seg?.legend || []).map((l) => [l.key, true]));
   const [active, setActive] = useState(() => allOn(segmentation));
+  const [showAttention, setShowAttention] = useState(false);
 
   /* New analysis result → reset every lesion toggle to visible. */
   useEffect(() => {
     setActive(allOn(segmentation));
+    setShowAttention(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentation]);
 
@@ -33,6 +35,9 @@ export default function LesionOverlay({ segmentation }) {
               />
             )
         )}
+        {showAttention && attention && (
+          <img src={`data:image/png;base64,${attention}`} alt="AI attention heatmap" className="layer" />
+        )}
       </div>
 
       <div className="legend">
@@ -47,6 +52,17 @@ export default function LesionOverlay({ segmentation }) {
             </label>
           );
         })}
+        {attention && (
+          <label className={`legend-item ${showAttention ? '' : 'off'}`}>
+            <input type="checkbox" checked={showAttention} onChange={() => setShowAttention((s) => !s)} />
+            <span
+              className="dot"
+              style={{ background: 'linear-gradient(90deg, #1a237e, #29b6f6, #ffee58, #d32f2f)' }}
+            />
+            <span className="legend-name">AI Attention</span>
+            <span className="legend-status">Grad-CAM</span>
+          </label>
+        )}
       </div>
     </div>
   );

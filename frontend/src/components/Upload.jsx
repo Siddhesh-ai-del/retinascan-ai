@@ -20,7 +20,7 @@ function extractErrorDetail(err) {
   return String(detail);
 }
 
-export default function Upload({ onResult, previewUrl, setPreviewUrl, patientId, setPatientId }) {
+export default function Upload({ onResult, onAttention, previewUrl, setPreviewUrl, patientId, setPatientId }) {
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [stage, setStage] = useState('idle');
@@ -77,6 +77,15 @@ export default function Upload({ onResult, previewUrl, setPreviewUrl, patientId,
       );
       setStage('done');
       onResult(res.data, Math.round(performance.now() - t0));
+
+      /* Grad-CAM attention is fetched after the main result so it never
+         delays screening; failure just means no heatmap layer. */
+      if (onAttention) {
+        axios
+          .post(`${API_URL}/api/explain`, form, { timeout: REQUEST_TIMEOUT })
+          .then((a) => onAttention(a.data?.heatmap || null))
+          .catch(() => onAttention(null));
+      }
     } catch (err) {
       setStage('idle');
       setMessage({ type: 'error', text: `Analysis failed: ${extractErrorDetail(err)}` });
