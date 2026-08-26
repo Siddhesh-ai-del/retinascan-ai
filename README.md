@@ -79,17 +79,6 @@ bash start_demo.sh        # one command: backend :8000 + frontend :3000
 Open **http://localhost:3000**, then drag an image from `demo_images/`:
 `blurry_ungradable.jpg` shows the IQA rejection flow · `moderate_npdr.jpg` runs the full pipeline.
 
-### 4 · One-command hosting (Docker Compose)
-
-```bash
-docker compose up --build     # backend :8000 + frontend :80
-```
-
-- `Dockerfile.backend` — python:3.12-slim, CPU-only torch (~2.2 GB image), ONNX models + Grad-CAM checkpoint baked in.
-- `frontend/Dockerfile` — node build stage → nginx serving the SPA, proxying `/api/` to the backend service.
-- Visit history (sqlite) and preprocess caches persist in the named volume `retinascan-data`.
-- Optional hardening via env vars: `RETINASCAN_API_KEY`, `RETINASCAN_MAX_UPLOAD_MB`, `RETINASCAN_RATE_LIMIT_PER_MIN`.
-
 ## 🏗️ Architecture
 
 ```
@@ -161,6 +150,12 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 - **APTOS 2019** — Kaggle Blindness Detection — 3,662 graded fundus images
 
 > Trained models are not distributed in this repo — export them with `src.export.onnx_export`.
+
+## 🗺️ Roadmap
+
+- Docker Compose one-command hosting (backend + nginx frontend) — spec drafted, pending verification on a Docker-enabled machine
+- Multi-user auth + cloud deployment
+- Longitudinal risk scoring across bilateral visit history
 
 ## ⚠️ Disclaimer
 
