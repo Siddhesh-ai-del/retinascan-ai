@@ -12,7 +12,7 @@ Upload a fundus image → quality gate → 5-stage ICDR classification → lesio
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
 [![ONNX](https://img.shields.io/badge/ONNX%20Runtime-CPU%20%7C%20GPU-005CED?style=flat-square&logo=onnx&logoColor=white)](https://onnxruntime.ai)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg?style=flat-square)](LICENSE)
 
 ![ICDR Accuracy](https://img.shields.io/badge/ICDR_val_accuracy-76.7%25-blue?style=for-the-badge)
 ![Inference](https://img.shields.io/badge/full_pipeline-0.39s-success?style=for-the-badge)
@@ -163,4 +163,4 @@ Research prototype. This is decision-support software, **not** a certified medic
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 Siddhesh
+[Proprietary](LICENSE) © 2026 Siddhesh
