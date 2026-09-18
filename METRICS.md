@@ -1,6 +1,6 @@
 # RetinaScan AI — Evaluation Metrics & Benchmark Results
 
-> SIH 2026 · Problem Statement SIH26038 · AI-Based Diabetic Retinopathy Screening & Classification
+> AI-Based Diabetic Retinopathy Screening & Classification
 
 ## Classification (ICDR 5-stage)
 

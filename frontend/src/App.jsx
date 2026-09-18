@@ -120,7 +120,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        Smart India Hackathon 2026 · SIH26038 · Decision support only — not a substitute for clinical diagnosis
+        Decision support only — not a substitute for clinical diagnosis
       </footer>
     </div>
   );

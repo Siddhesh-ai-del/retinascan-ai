@@ -25,7 +25,7 @@ UPGRADE_PLAN.md
 create_ppt.py
 export_pdf.sh
 PPT_CONTENT.md
-sih_logo.png
+
 *.pptx
 
 # local rebuild blueprint (not published)

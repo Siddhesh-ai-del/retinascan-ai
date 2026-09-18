@@ -2,7 +2,7 @@
 
 # 👁️ RetinaScan AI
 
-**AI-Based Diabetic Retinopathy Screening & Classification — SIH 2026 · SIH26038**
+**AI-Based Diabetic Retinopathy Screening & Classification**
 
 Upload a fundus image → quality gate → 5-stage ICDR classification → lesion segmentation overlay → HL7 FHIR R4 report.
 
@@ -159,7 +159,7 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 
 ## ⚠️ Disclaimer
 
-Research prototype built for **Smart India Hackathon 2026**. This is decision-support software, **not** a certified medical device and not a substitute for clinical diagnosis.
+Research prototype. This is decision-support software, **not** a certified medical device and not a substitute for clinical diagnosis.
 
 ## 📄 License
 
