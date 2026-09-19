@@ -1,7 +1,0 @@
-{
-  "standard_acc": 0.5129604365620737,
-  "tta_3_acc": null,
-  "tta_5_acc": null,
-  "model_epoch": 19,
-  "model_val_acc": 0.7889570552147239
-}
