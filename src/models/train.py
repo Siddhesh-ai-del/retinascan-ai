@@ -28,7 +28,7 @@ from src.data.dataset import (
     build_combined_dataset,
 )
 from src.constants import CLASS_NAMES
-from src.models.classifier import DRClassifier
+from src.models.classifier import DRClassifier, DRClassifierConvNeXt
 from src.models.segmenter import LesionSegmenter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -66,6 +66,69 @@ class FocalLoss(nn.Module):
         return focal.mean()
 
 
+def mixup_data(x, y, alpha=0.2):
+    """Mixup augmentation: interpolate between pairs of samples."""
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1.0
+    batch_size = x.size(0)
+    index = torch.randperm(batch_size, device=x.device)
+    mixed_x = lam * x + (1 - lam) * x[index]
+    y_a, y_b = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    """Mixup loss: weighted average of losses for original and mixed labels."""
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+
+
+class OrdinalRegressionLoss(nn.Module):
+    """Ordinal regression loss for ordered class labels (0 < 1 < 2 < 3 < 4).
+    Uses cumulative link model: P(Y > k) for each threshold k."""
+
+    def __init__(self, num_classes=5):
+        super().__init__()
+        self.num_classes = num_classes
+
+    def forward(self, logits, targets):
+        # logits: (B, C), targets: (B,) with integer labels
+        B = logits.size(0)
+        # Create binary labels: for each sample, Y > k for k = 0..C-2
+        # If target = 2, then Y>0=1, Y>1=1, Y>2=0, Y>3=0
+        ordinal_labels = torch.zeros(B, self.num_classes - 1, device=targets.device)
+        for k in range(self.num_classes - 1):
+            ordinal_labels[:, k] = (targets > k).float()
+
+        # Use first C-1 logits as cumulative logits
+        cum_logits = logits[:, : self.num_classes - 1]
+
+        # Binary cross-entropy for each threshold
+        loss = F.binary_cross_entropy_with_logits(cum_logits, ordinal_labels, reduction="mean")
+        return loss
+
+
+class FocalTverskyLoss(nn.Module):
+    """Focal Tversky loss — better for imbalanced segmentation."""
+
+    def __init__(self, alpha=0.7, gamma=0.75):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, inputs, targets):
+        smooth = 1.0
+        inputs = torch.sigmoid(inputs)
+        inputs = inputs.view(-1)
+        targets = targets.view(-1)
+        TP = (inputs * targets).sum()
+        FP = ((1 - targets) * inputs).sum()
+        FN = (targets * (1 - inputs)).sum()
+        tversky = (TP + smooth) / (TP + self.alpha * FP + (1 - self.alpha) * FN + smooth)
+        return (1 - tversky) ** self.gamma
+
+
 def compute_class_weights(labels, severity_boost=2.0):
     counts = np.bincount(labels, minlength=NUM_CLASSES).astype(np.float64)
     weights = len(labels) / (NUM_CLASSES * np.maximum(counts, 1))
@@ -83,14 +146,28 @@ def make_loaders(args, severity_boost=3.0):
     cache_root = PROJECT_ROOT / "data" / "processed"
 
     if args.mode == "classification":
-        train_ds = build_combined_dataset(transform=TRAIN_TRANSFORM, include_aptos=False, cache_root=cache_root)
-        val_ds = build_combined_dataset(transform=EVAL_TRANSFORM, include_aptos=False, cache_root=cache_root)
-        labels = train_ds.labels
+        # Use BOTH IDRiD + APTOS for training (10x more data)
+        # Hold out 20% of APTOS for validation
+        from src.data.dataset import APTOSDataset
+        idrid_ds = IDRiDDataset(task="classification", transform=TRAIN_TRANSFORM, split="train", cache_root=cache_root)
+        aptos_ds = APTOSDataset(transform=TRAIN_TRANSFORM, cache_root=cache_root)
+
+        print(f"IDRiD: {len(idrid_ds)} images | APTOS: {len(aptos_ds)} images | Total: {len(idrid_ds) + len(aptos_ds)}")
+
+        # Combine all labels for stratified split
+        all_labels = np.array([s["label"] for s in idrid_ds.samples] + [s["label"] for s in aptos_ds.samples])
+        all_indices = np.arange(len(all_labels))
+
         train_idx, val_idx = train_test_split(
-            np.arange(len(train_ds)), test_size=0.2, stratify=labels, random_state=SEED
+            all_indices, test_size=0.2, stratify=all_labels, random_state=SEED
         )
-        train_subset, val_subset = Subset(train_ds, train_idx.tolist()), Subset(val_ds, val_idx.tolist())
-        class_weights = compute_class_weights(labels[train_idx], severity_boost=severity_boost)
+
+        # Build combined dataset and subset
+        combined = CombinedDataset([idrid_ds, aptos_ds])
+        train_subset = Subset(combined, train_idx.tolist())
+        val_subset = Subset(combined, val_idx.tolist())
+
+        class_weights = compute_class_weights(all_labels[train_idx], severity_boost=severity_boost)
         print(f"Train: {len(train_subset)} | Val: {len(val_subset)} | Class weights: {class_weights.numpy().round(3)}")
         return (
             DataLoader(train_subset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True),
@@ -104,15 +181,16 @@ def make_loaders(args, severity_boost=3.0):
     idrid_val = IDRiDDataset(task="segmentation", transform=EVAL_TRANSFORM, split="train", cache_root=cache_root)
     idrid_val_test = IDRiDDataset(task="segmentation", transform=EVAL_TRANSFORM, split="test", cache_root=cache_root)
 
-    # Also load DDR dataset (383 images with masks — 7x more than IDRiD)
+    # Load DDR dataset — merge ALL splits for maximum training data
     try:
         from src.data.dataset import DDRSegmentationDataset
         ddr_train = DDRSegmentationDataset(transform=TRAIN_TRANSFORM, split="train", cache_root=cache_root)
-        ddr_val = DDRSegmentationDataset(transform=EVAL_TRANSFORM, split="valid", cache_root=cache_root)
-        # Use DDR train for training, DDR valid for validation (proper split)
-        pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test, ddr_train])
-        pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test, ddr_val])
-        print(f"Using IDRiD + DDR for segmentation training")
+        ddr_valid = DDRSegmentationDataset(transform=EVAL_TRANSFORM, split="valid", cache_root=cache_root)
+        ddr_test = DDRSegmentationDataset(transform=EVAL_TRANSFORM, split="test", cache_root=cache_root)
+        # Merge ALL DDR splits for training, use IDRiD test for validation
+        pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test, ddr_train, ddr_valid, ddr_test])
+        pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test])
+        print(f"Using IDRiD + DDR (all splits) for segmentation: train={len(pool_train)}, val={len(pool_val)}")
     except FileNotFoundError:
         pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test])
         pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test])
@@ -169,12 +247,20 @@ def train_classification(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train_loader, val_loader, class_weights, _ = make_loaders(args)
 
-    model = DRClassifier(num_classes=NUM_CLASSES, pretrained=True).to(device)
-    criterion = FocalLoss(alpha=class_weights.to(device), gamma=2.0, label_smoothing=0.15)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    # Use ConvNeXt-Tiny if --model convnext specified, else EfficientNet-B2
+    if getattr(args, "model", "efficientnet") == "convnext":
+        model = DRClassifierConvNeXt(num_classes=NUM_CLASSES, pretrained=True).to(device)
+        print("Using ConvNeXt-Tiny backbone (28M params)")
+    else:
+        model = DRClassifier(num_classes=NUM_CLASSES, pretrained=True).to(device)
+        print("Using EfficientNet-B2 backbone (9M params)")
+
+    # Combined loss: Focal only (ordinal loss causes instability)
+    focal_criterion = FocalLoss(alpha=class_weights.to(device), gamma=2.0, label_smoothing=0.15)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=5e-4)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=args.lr * 10,  # Peak LR is 10x base
+        max_lr=args.lr * 5,  # Conservative peak LR
         epochs=args.epochs,
         steps_per_epoch=len(train_loader),
         pct_start=0.3,  # Warmup for 30% of training
@@ -184,6 +270,8 @@ def train_classification(args):
     out_dir = PROJECT_ROOT / "models" / "classification"
     out_dir.mkdir(parents=True, exist_ok=True)
     best_acc = 0.0
+    patience = 15  # Early stopping
+    patience_counter = 0
     ckpt_path = out_dir / "best_classifier.pth"
 
     for epoch in range(args.epochs):
@@ -192,10 +280,20 @@ def train_classification(args):
         pbar = tqdm(train_loader, desc=f"[Cls] Epoch {epoch + 1}/{args.epochs}")
         for imgs, labels, _ in pbar:
             imgs, labels = imgs.to(device, non_blocking=True), labels.to(device, non_blocking=True)
+
+            # Mixup augmentation (30% chance — conservative)
+            use_mixup = np.random.random() < 0.3
+            if use_mixup:
+                imgs, y_a, y_b, lam = mixup_data(imgs, labels, alpha=0.2)
+
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast("cuda"):
                 outputs = model(imgs)
-                loss = criterion(outputs, labels)
+                if use_mixup:
+                    loss = mixup_criterion(focal_criterion, outputs, y_a, y_b, lam)
+                else:
+                    loss = focal_criterion(outputs, labels)
+
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -207,11 +305,17 @@ def train_classification(args):
         print(f"Epoch {epoch + 1}: train_loss={running_loss / max(len(train_loader), 1):.4f} val_acc={acc:.4f}")
         if acc > best_acc:
             best_acc = acc
+            patience_counter = 0
             torch.save(
-                {"model_state_dict": model.state_dict(), "val_acc": acc, "epoch": epoch + 1},
+                {"model_state_dict": model.state_dict(), "val_acc": acc, "epoch": epoch + 1, "backbone": getattr(args, "model", "efficientnet")},
                 ckpt_path,
             )
             print(f"  Saved new best ({ckpt_path.name}, acc={acc:.4f})")
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"  Early stopping at epoch {epoch + 1} (no improvement for {patience} epochs)")
+                break
 
     report = classification_report(targets, preds, target_names=CLASS_NAMES, digits=4)
     (out_dir / "classification_report.txt").write_text(report)
@@ -224,7 +328,7 @@ def train_classification(args):
     plt.close()
 
     (out_dir / "training_summary.json").write_text(
-        json.dumps({"best_val_accuracy": best_acc, "epochs": args.epochs, "batch_size": args.batch_size, "lr": args.lr}, indent=2)
+        json.dumps({"best_val_accuracy": best_acc, "epochs": args.epochs, "batch_size": args.batch_size, "lr": args.lr, "backbone": getattr(args, "model", "efficientnet")}, indent=2)
     )
     print(f"DONE. Best val accuracy: {best_acc:.4f}. Artifacts in {out_dir}")
 
@@ -255,7 +359,7 @@ def train_segmentation(args):
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast("cuda"):
                 outputs = model(imgs)
-                loss = 2.0 * dice_loss(outputs, masks) + 0.5 * bce_loss(outputs, masks)
+                loss = 1.5 * dice_loss(outputs, masks) + 0.5 * bce_loss(outputs, masks)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -282,6 +386,7 @@ def train_segmentation(args):
 def main():
     parser = argparse.ArgumentParser(description="Train DR classifier and/or lesion segmenter")
     parser.add_argument("--mode", choices=["classification", "segmentation"], required=True)
+    parser.add_argument("--model", choices=["efficientnet", "convnext"], default="efficientnet", help="Classifier backbone")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)

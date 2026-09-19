@@ -64,7 +64,12 @@ async def lifespan(_app: FastAPI):
     visits = VisitStore(DB_PATH)
     classifier_path = _pick(CLASSIFIER_FP32, CLASSIFIER_INT8)
     segmenter_path = _pick(SEGMENTER_FP32, SEGMENTER_INT8)
-    predictor = DRPredictor(classifier_path, segmenter_path)
+    # Ensemble: load all ONNX classifier models in the onnx dir
+    ensemble_dir = PROJECT_ROOT / "models" / "onnx"
+    ensemble_paths = sorted(ensemble_dir.glob("classifier_ensemble_*.onnx"))
+    if not ensemble_paths:
+        ensemble_paths = [classifier_path] if classifier_path else []
+    predictor = DRPredictor(classifier_path, segmenter_path, ensemble_paths=ensemble_paths)
     logger.info(
         "Models loaded. Ready: %s (classifier=%s, segmenter=%s)",
         predictor.is_ready(),

@@ -1,0 +1,5 @@
+{
+  "single_best_tta_acc": 0.8164383561643835,
+  "ensemble_acc": 0.8205479452054795,
+  "weighted_ensemble_acc": 0.8191780821917808
+}

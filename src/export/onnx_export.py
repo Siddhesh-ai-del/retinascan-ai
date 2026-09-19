@@ -8,7 +8,7 @@ import onnxruntime as ort
 import torch
 from onnxruntime.quantization import quantize_dynamic, QuantType
 
-from src.models.classifier import DRClassifier
+from src.models.classifier import DRClassifier, DRClassifierConvNeXt
 from src.models.segmenter import LesionSegmenter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -19,10 +19,15 @@ def load_classifier(device="cpu"):
     ckpt_path = PROJECT_ROOT / "models" / "classification" / "best_classifier.pth"
     if not ckpt_path.exists():
         raise FileNotFoundError(f"{ckpt_path} not found. Train the classifier first.")
-    model = DRClassifier(num_classes=5, pretrained=False)
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+    backbone = ckpt.get("backbone", "efficientnet")
+    if backbone == "convnext_tiny":
+        model = DRClassifierConvNeXt(num_classes=5, pretrained=False)
+    else:
+        model = DRClassifier(num_classes=5, pretrained=False)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
+    print(f"Loaded {backbone} model (val_acc={ckpt.get('val_acc', 'N/A')})")
     return model
 
 

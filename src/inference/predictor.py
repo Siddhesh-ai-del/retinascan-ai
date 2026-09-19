@@ -52,9 +52,18 @@ def make_session(model_path):
 
 
 class DRPredictor:
-    def __init__(self, classifier_path=None, segmenter_path=None, patient_id="unknown"):
+    def __init__(self, classifier_path=None, segmenter_path=None, patient_id="unknown",
+                 ensemble_paths=None):
         self.classifier = make_session(classifier_path) if classifier_path else None
         self.segmenter = make_session(segmenter_path) if segmenter_path else None
+        self.ensemble = []
+        if ensemble_paths:
+            for p in ensemble_paths:
+                sess = make_session(p)
+                if sess is not None:
+                    self.ensemble.append(sess)
+            if self.ensemble:
+                print(f"Loaded {len(self.ensemble)} ensemble models")
         self.iqa = ImageQualityAssessor()
         self.patient_id = patient_id
 
@@ -109,6 +118,27 @@ class DRPredictor:
             all_probs.append(probs)
 
         # Average probabilities
+        mean_probs = np.mean(all_probs, axis=0)
+        stage = int(np.argmax(mean_probs))
+        return {
+            "stage": stage,
+            "label": CLASS_NAMES[stage],
+            "confidence": round(float(mean_probs[stage]), 4),
+            "probabilities": [round(float(p), 4) for p in mean_probs],
+        }
+
+    def _classify_ensemble(self, input_tensor):
+        """Ensemble prediction: average probabilities across multiple models."""
+        if not self.ensemble:
+            return self._classify_tta(input_tensor)
+
+        all_probs = []
+        for sess in self.ensemble:
+            logits = sess.run(None, {sess.get_inputs()[0].name: input_tensor})[0][0]
+            probs = np.exp(logits - logits.max())
+            probs = probs / probs.sum()
+            all_probs.append(probs)
+
         mean_probs = np.mean(all_probs, axis=0)
         stage = int(np.argmax(mean_probs))
         return {
@@ -190,7 +220,7 @@ class DRPredictor:
             }
 
         base, input_tensor = self._preprocess(image_path)
-        classification = self._classify_tta(input_tensor) if self.classifier else None
+        classification = self._classify_ensemble(input_tensor) if self.classifier else None
         masks = self._segment(input_tensor) if self.segmenter else None
 
         overlay_pack = self._make_overlays(base, masks) if masks is not None else None
