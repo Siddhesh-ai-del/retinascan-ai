@@ -1,6 +1,6 @@
 {
-  "best_val_accuracy": 0.7668711656441718,
-  "epochs": 30,
+  "best_val_accuracy": 0.7349397590361446,
+  "epochs": 50,
   "batch_size": 16,
-  "lr": 0.0001
+  "lr": 0.0002
 }

@@ -10,13 +10,18 @@ SNOMED_CODES = {
 
 
 def generate_fhir_report(patient_id, classification_result, lesion_summary):
-    stage = classification_result["stage"]
-    label = classification_result["label"]
+    if not classification_result or not isinstance(classification_result, dict):
+        raise ValueError("classification_result must be a non-empty dict")
+    stage = classification_result.get("stage", 0)
+    label = classification_result.get("label", "Unknown")
+    confidence = classification_result.get("confidence", 0.0)
     snomed_code, snomed_display = SNOMED_CODES.get(stage, ("00000000", "Unspecified"))
 
+    safe_lesions = lesion_summary if isinstance(lesion_summary, dict) else {}
+
     def lesion_ext(key, url):
-        info = lesion_summary.get(key)
-        return {"url": url, "valueBoolean": bool(info and info["detected"])}
+        info = safe_lesions.get(key)
+        return {"url": url, "valueBoolean": bool(info and info.get("detected"))}
 
     report = {
         "resourceType": "DiagnosticReport",
@@ -44,7 +49,7 @@ def generate_fhir_report(patient_id, classification_result, lesion_summary):
         "subject": {"reference": f"Patient/{patient_id}"},
         "effectiveDateTime": datetime.now(timezone.utc).isoformat(),
         "issued": datetime.now(timezone.utc).isoformat(),
-        "conclusion": f"ICDR Stage {stage}: {label} (confidence {classification_result['confidence']:.0%})",
+        "conclusion": f"ICDR Stage {stage}: {label} (confidence {confidence:.0%})",
         "conclusionCode": {
             "coding": [
                 {
@@ -91,7 +96,7 @@ def generate_fhir_report(patient_id, classification_result, lesion_summary):
                             ]
                         },
                         "valueQuantity": {
-                            "value": round(classification_result["confidence"] * 100, 1),
+                            "value": round(confidence * 100, 1),
                             "unit": "%",
                         },
                     }

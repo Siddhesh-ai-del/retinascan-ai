@@ -47,6 +47,7 @@ visits: Optional[VisitStore] = None
 # Full predict payloads per patient (FHIR doc, images, review flag, attention heatmap).
 results_cache: "OrderedDict[str, dict]" = OrderedDict()
 _rate_bucket: dict = defaultdict(deque)
+_RATE_BUCKET_MAX_IPS = 10_000  # cap to prevent unbounded memory growth
 
 
 def _pick(fp32: Path, int8: Path) -> Optional[Path]:
@@ -94,12 +95,31 @@ def _check_auth(request: Request) -> None:
 
 def _check_rate_limit(request: Request) -> None:
     now = time.monotonic()
-    bucket = _rate_bucket[request.client.host if request.client else "unknown"]
+    host = request.client.host if request.client else "unknown"
+    bucket = _rate_bucket[host]
     while bucket and now - bucket[0] > 60:
         bucket.popleft()
     if len(bucket) >= RATE_LIMIT_PER_MIN:
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again shortly.")
     bucket.append(now)
+    # Evict stale buckets to prevent unbounded memory growth
+    if len(_rate_bucket) > _RATE_BUCKET_MAX_IPS:
+        stale = [k for k, v in list(_rate_bucket.items()) if not v]
+        for k in stale[: len(stale) // 2]:
+            _rate_bucket.pop(k, None)
+
+
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+
+
+def _validate_upload(file: UploadFile) -> None:
+    """Reject files that are not images — the HTML accept attribute is advisory only."""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix and suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported image format '{suffix}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
 
 
 def _save_upload(file: UploadFile) -> Path:
@@ -142,6 +162,7 @@ async def health():
 async def assess_quality(request: Request, file: UploadFile = File(...)):
     _check_auth(request)
     _check_rate_limit(request)
+    _validate_upload(file)
     if predictor is None:
         raise HTTPException(status_code=503, detail="Models not loaded yet.")
     path = await _save_and_keep(file)
@@ -163,11 +184,12 @@ async def _save_and_keep(file: UploadFile) -> Path:
 async def predict(
     request: Request,
     file: UploadFile = File(...),
-    patient_id: str = "",
+    patient_id: str = Form(""),
     eye: str = Form("unknown"),
 ):
     _check_auth(request)
     _check_rate_limit(request)
+    _validate_upload(file)
     if predictor is None or not predictor.is_ready():
         raise HTTPException(status_code=503, detail="Models not loaded yet. Train models and run ONNX export first.")
     if eye not in ("L", "R", "unknown"):
@@ -293,3 +315,53 @@ async def get_demo_image(name: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Demo image not found")
     return FileResponse(path)
+
+
+@app.post("/api/batch-predict")
+async def batch_predict(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    patient_id: str = Form("batch"),
+):
+    """Process multiple images in one request."""
+    _check_auth(request)
+    _check_rate_limit(request)
+    if predictor is None or not predictor.is_ready():
+        raise HTTPException(status_code=503, detail="Models not loaded yet.")
+
+    results = []
+    for file in files[:20]:  # Cap at 20 images
+        _validate_upload(file)
+        path = await _save_and_keep(file)
+        try:
+            result = await anyio.to_thread.run_sync(predictor.predict, path, patient_id)
+            result["filename"] = file.filename
+            results.append(result)
+        except Exception as e:
+            logger.exception("Batch prediction failed for %s", file.filename)
+            results.append({
+                "filename": file.filename,
+                "status": "error",
+                "error": str(e),
+            })
+        finally:
+            path.unlink(missing_ok=True)
+
+    # Sort by severity (most severe first)
+    def sort_key(r):
+        if r.get("status") != "ok" or not r.get("classification"):
+            return -1  # rejected/error at top
+        return r["classification"]["stage"]
+
+    results.sort(key=sort_key, reverse=True)
+
+    summary = {
+        "total": len(results),
+        "screened": sum(1 for r in results if r.get("status") == "ok"),
+        "rejected": sum(1 for r in results if r.get("status") == "rejected"),
+        "errors": sum(1 for r in results if r.get("status") == "error"),
+        "urgent": sum(1 for r in results if r.get("referral", {}).get("recommended", False)),
+        "needs_review": sum(1 for r in results if r.get("needs_human_review", False)),
+    }
+
+    return {"summary": summary, "results": results}

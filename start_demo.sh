@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+# RetinaScan AI — Demo launcher
+# Ctrl+C (or any signal) shuts down both backend and frontend cleanly.
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
@@ -7,6 +9,23 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 LOG_DIR="$PROJECT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
+# --- cleanup on any exit (Ctrl-C, SIGTERM, normal exit) ---------------
+cleanup() {
+    echo ""
+    echo -e "${YELLOW}Shutting down...${NC}"
+    # Kill backend by process name
+    pkill -f "uvicorn src.api.server" 2>/dev/null && echo -e "  Backend stopped"  || true
+    # Kill frontend: kill all node processes on port 3000
+    fuser -k 3000/tcp >/dev/null 2>&1 && echo -e "  Frontend stopped" || true
+    # Clean up any leftover webpack/node dev server children
+    pkill -9 -f "node.*webpack" 2>/dev/null || true
+    wait 2>/dev/null || true
+    echo -e "${GREEN}All services stopped.${NC}"
+    exit 0
+}
+trap cleanup INT TERM HUP EXIT
+
+# --- preflight --------------------------------------------------------
 if ! command -v curl &>/dev/null; then
     echo -e "${RED}ERROR: curl is required but not installed.${NC}"
     exit 1
@@ -24,6 +43,15 @@ if [ ! -d venv ]; then
     exit 1
 fi
 
+# Fix stale shebangs if the venv was moved from another directory
+VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
+sed -i "1s|^#!.*|#!${VENV_PYTHON}|" "$PROJECT_DIR"/venv/bin/activate "$PROJECT_DIR"/venv/bin/activate.csh 2>/dev/null || true
+for script in "$PROJECT_DIR"/venv/bin/*; do
+    if head -1 "$script" 2>/dev/null | grep -q '^#!.*python'; then
+        sed -i "1s|^#!.*|#!${VENV_PYTHON}|" "$script"
+    fi
+done
+
 for f in models/onnx/classifier.onnx models/onnx/segmenter.onnx; do
     if [ ! -f "$f" ]; then
         echo -e "${RED}ERROR: missing $f${NC}"
@@ -32,13 +60,13 @@ for f in models/onnx/classifier.onnx models/onnx/segmenter.onnx; do
     fi
 done
 
+# --- backend ----------------------------------------------------------
 if port_up 8000; then
     echo -e "${YELLOW}Backend already running on :8000 — reusing it${NC}"
 else
     echo "Starting backend on :8000 ..."
-    setsid nohup venv/bin/uvicorn src.api.server:app --host 127.0.0.1 --port 8000 \
+    venv/bin/python -m uvicorn src.api.server:app --host 127.0.0.1 --port 8000 \
         </dev/null > "$LOG_DIR/backend.log" 2>&1 &
-    disown
 fi
 
 for i in $(seq 1 30); do
@@ -54,13 +82,13 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
+# --- frontend ---------------------------------------------------------
 if port_up 3000; then
     echo -e "${YELLOW}Frontend already running on :3000 — reusing it${NC}"
 else
     echo "Starting frontend on :3000 ..."
-    setsid nohup bash -c "cd '$PROJECT_DIR/frontend' && npm start" \
+    bash -c "cd '$PROJECT_DIR/frontend' && npm start" \
         </dev/null > "$LOG_DIR/frontend.log" 2>&1 &
-    disown
 fi
 
 for i in $(seq 1 60); do
@@ -83,4 +111,11 @@ echo -e ""
 echo -e "   Demo images: ./demo_images/"
 echo -e "     blurry_ungradable.jpg -> IQA rejection"
 echo -e "     moderate_npdr.jpg     -> full pipeline"
+echo -e ""
+echo -e "   Press Ctrl+C to stop all services"
 echo -e "==============================================${NC}"
+
+# --- block until interrupted ------------------------------------------
+# Keep the script alive until Ctrl-C or SIGTERM fires the cleanup trap.
+tail -f /dev/null &
+wait

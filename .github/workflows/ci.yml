@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install lightweight deps
-        run: pip install numpy opencv-python-headless fastapi httpx
+        run: pip install numpy opencv-python-headless fastapi httpx python-multipart anyio
 
       - name: Syntax check all source files
         run: python -m compileall -q src scripts

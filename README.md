@@ -14,10 +14,10 @@ Upload a fundus image → quality gate → 5-stage ICDR classification → lesio
 [![ONNX](https://img.shields.io/badge/ONNX%20Runtime-CPU%20%7C%20GPU-005CED?style=flat-square&logo=onnx&logoColor=white)](https://onnxruntime.ai)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg?style=flat-square)](LICENSE)
 
-![ICDR Accuracy](https://img.shields.io/badge/ICDR_val_accuracy-76.7%25-blue?style=for-the-badge)
-![Inference](https://img.shields.io/badge/full_pipeline-0.39s-success?style=for-the-badge)
+![ICDR Accuracy](https://img.shields.io/badge/external_val_accuracy-60.8%25-blue?style=for-the-badge)
+![Sensitivity](https://img.shields.io/badge/referable_DR_sensitivity-97.5%25-green?style=for-the-badge)
+![Inference](https://img.shields.io/badge/full_pipeline-0.59s-success?style=for-the-badge)
 ![Stages](https://img.shields.io/badge/ICDR_stages-0–4-purple?style=for-the-badge)
-![Lesions](https://img.shields.io/badge/lesion_classes-4-orange?style=for-the-badge)
 
 </div>
 
@@ -61,9 +61,9 @@ Requires [Kaggle API credentials](https://www.kaggle.com/docs/api) (`~/.kaggle/a
 
 ```bash
 python -m src.data.download                                   # IDRiD + APTOS (~10GB)
-python -m src.models.train --mode classification --epochs 30 --batch_size 16
+python -m src.models.train --mode classification --epochs 50 --batch_size 16 --lr 2e-4
 python -m src.models.train --mode segmentation --epochs 80 --batch_size 8
-python -m src.export.onnx_export                              # FP32 + INT8 + benchmark
+python -m src.export.onnx_export --skip-segmenter                  # FP32 ONNX
 ```
 
 Preprocessed tensors are cached in `data/processed/cache_512/` after the first run.
@@ -107,14 +107,35 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 
 ## 📈 Results
 
+### External Validation (APTOS 2019 — 3,394 unseen images)
+
 | Metric | Value |
 |---|---|
-| Classifier val accuracy (IDRiD + APTOS) | **76.7%** |
-| No DR class F1 | 0.97 |
-| Full pipeline latency (CPU) | **0.39 s** |
+| Overall accuracy | **60.8%** (95% CI: 59.2–62.3%) |
+| Referable DR sensitivity | **97.5%** (95% CI: 96.5–98.2%) |
+| Referable DR specificity | 72.8% |
+| NPV (safe to discharge) | 97.5% |
+| AUC | 0.8433 |
+| IQA rejection rate | 7.3% |
+
+### Per-Class F1 (External Validation)
+
+| Class | F1 |
+|---|---|
+| No DR | 0.897 |
+| Mild NPDR | 0.000 |
+| Moderate NPDR | 0.499 |
+| Severe NPDR | 0.256 |
+| Proliferative DR | 0.326 |
+
+### Performance
+
+| Metric | Value |
+|---|---|
+| Full pipeline latency (CPU) | **0.59 s** |
+| P95 latency | 0.71 s |
 | Classifier ONNX latency | 77 ms |
 | Segmenter ONNX latency | 150 ms |
-| Demo-set screening accuracy | **5/5 stages correct** |
 | Parameters | 8.1M classifier · 12.5M segmenter |
 
 ## 🌐 API
@@ -123,7 +144,9 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 |---|---|
 | `POST /api/assess-quality` | IQA only — gradable verdict + feedback |
 | `POST /api/predict?patient_id=` | Full pipeline (JSON with base64 overlays + FHIR) |
+| `POST /api/batch-predict` | Batch analysis (up to 20 images) |
 | `GET  /api/fhir/{patient_id}` | Cached FHIR DiagnosticReport |
+| `GET  /api/report/{patient_id}.pdf` | PDF clinical report |
 | `GET  /api/demo-images` | Bundled demo images |
 | `GET  /api/health` | Liveness + model status |
 

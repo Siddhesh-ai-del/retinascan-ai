@@ -1,11 +1,21 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { TriangleAlert, CircleCheck, Zap, Eye, FileDown } from 'lucide-react';
 import LesionOverlay from './LesionOverlay';
 import FhirExport from './FhirExport';
 import TimelineCard from './TimelineCard';
 import { API_URL, stageColor as stageColorFor } from '../config';
 
-export default function Results({ result, meta, patientId, attention }) {
+export default function Results({ result, meta, patientId, attention, previewUrl }) {
+  /* Revoke the preview blob URL when this component unmounts or the URL
+     changes — prevents memory leaks from accumulated object URLs. */
+  const previewRef = useRef(previewUrl);
+  useEffect(() => {
+    const prev = previewRef.current;
+    previewRef.current = previewUrl;
+    return () => {
+      if (prev) URL.revokeObjectURL(prev);
+    };
+  }, [previewUrl]);
   const { classification, segmentation, referral, quality } = result;
 
   if (result.status === 'rejected') {
@@ -115,6 +125,25 @@ export default function Results({ result, meta, patientId, attention }) {
                   : `Routine follow-up: ${referral.urgency}.`}
             </p>
           </div>
+
+          {segmentation?.lesions && (
+            <div className="card">
+              <h3>Lesion Detection</h3>
+              <div className="lesion-summary">
+                {Object.entries(segmentation.lesions).map(([key, info]) => (
+                  <div key={key} className="lesion-row">
+                    <span className="dot" style={{
+                      background: segmentation.legend?.find(l => l.key === key)?.color || '#888'
+                    }} />
+                    <span className="lesion-name">{info.name}</span>
+                    <span className={`lesion-status ${info.detected ? 'detected' : 'absent'}`}>
+                      {info.detected ? `${info.area_percent}% area` : 'Not detected'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <TimelineCard patientId={patientId} refreshKey={result} />
 

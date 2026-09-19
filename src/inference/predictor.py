@@ -26,8 +26,8 @@ REFERRAL_MAP = {
     4: {"recommended": True, "urgency": "immediate — within 24 hours"},
 }
 
-SEG_VIS_THRESHOLD = 0.40
-OVERLAY_ALPHA = 0.65
+SEG_VIS_THRESHOLD = 0.30  # Was 0.40 — more sensitive detection
+OVERLAY_ALPHA = 0.75  # Was 0.65 — more visible overlays
 LESION_PIXEL_THRESHOLD = 25
 
 # Abstention: below this confidence (or in the fundus-score borderline band)
@@ -80,9 +80,57 @@ class DRPredictor:
             "probabilities": [round(float(p), 4) for p in probs],
         }
 
+    def _classify_tta(self, input_tensor, n_augments=4):
+        """Average predictions over augmented versions of the input."""
+        base = input_tensor[0]  # (3, 512, 512) CHW
+
+        # Generate augmented versions
+        augmented_tensors = [input_tensor]  # original
+
+        # Horizontal flip
+        flipped = np.flip(base, axis=2).copy()  # flip W
+        augmented_tensors.append(flipped[np.newaxis, ...])
+
+        # Vertical flip
+        vflipped = np.flip(base, axis=1).copy()  # flip H
+        augmented_tensors.append(vflipped[np.newaxis, ...])
+
+        # Both flips
+        both = np.flip(base, axis=(1, 2)).copy()
+        augmented_tensors.append(both[np.newaxis, ...])
+
+        # Collect all predictions
+        all_probs = []
+        for aug_tensor in augmented_tensors:
+            aug_tensor = aug_tensor.astype(np.float32)
+            logits = self.classifier.run(None, {self.classifier.get_inputs()[0].name: aug_tensor})[0][0]
+            probs = np.exp(logits - logits.max())
+            probs = probs / probs.sum()
+            all_probs.append(probs)
+
+        # Average probabilities
+        mean_probs = np.mean(all_probs, axis=0)
+        stage = int(np.argmax(mean_probs))
+        return {
+            "stage": stage,
+            "label": CLASS_NAMES[stage],
+            "confidence": round(float(mean_probs[stage]), 4),
+            "probabilities": [round(float(p), 4) for p in mean_probs],
+        }
+
     def _segment(self, input_tensor):
         logits = self.segmenter.run(None, {self.segmenter.get_inputs()[0].name: input_tensor})[0][0]
-        return (1 / (1 + np.exp(-logits)) > SEG_VIS_THRESHOLD).astype(np.uint8)
+        raw = (1 / (1 + np.exp(-logits)) > SEG_VIS_THRESHOLD).astype(np.uint8)
+
+        # Morphological cleanup — remove small isolated pixels
+        kernel = np.ones((3, 3), np.uint8)
+        cleaned = np.zeros_like(raw)
+        for i in range(raw.shape[0]):
+            # Remove small noise
+            cleaned[i] = cv2.morphologyEx(raw[i], cv2.MORPH_OPEN, kernel)
+            # Fill small holes
+            cleaned[i] = cv2.morphologyEx(cleaned[i], cv2.MORPH_CLOSE, kernel)
+        return cleaned
 
     def _encode_png(self, img):
         ok, buf = cv2.imencode(".png", img)
@@ -103,7 +151,7 @@ class DRPredictor:
                 layer[region, 2] = r
                 layer[region, 3] = int(255 * OVERLAY_ALPHA)
                 contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(layer, contours, -1, (b, g, r, 255), 1)
+                cv2.drawContours(layer, contours, -1, (b, g, r, 255), 2)  # Thicker contours
             key = LESION_KEYS[i]
             overlays[key] = self._encode_png(layer)
 
@@ -142,26 +190,38 @@ class DRPredictor:
             }
 
         base, input_tensor = self._preprocess(image_path)
-        classification = self._classify(input_tensor) if self.classifier else None
+        classification = self._classify_tta(input_tensor) if self.classifier else None
         masks = self._segment(input_tensor) if self.segmenter else None
 
         overlay_pack = self._make_overlays(base, masks) if masks is not None else None
 
         lesion_summary = {}
         if masks is not None:
+            total_pixels = masks.shape[1] * masks.shape[2]
             for i, (key, name) in enumerate(zip(LESION_KEYS, LESION_NAMES)):
                 count = int(masks[i].sum())
-                lesion_summary[key] = {"detected": bool(count > LESION_PIXEL_THRESHOLD), "pixels": count, "name": name}
+                area_pct = round(count / total_pixels * 100, 2)
+                lesion_summary[key] = {
+                    "detected": bool(count > LESION_PIXEL_THRESHOLD),
+                    "pixels": count,
+                    "area_percent": area_pct,
+                    "name": name,
+                }
 
         overlay_b64 = overlay_pack["combined_overlay"] if overlay_pack else None
 
         referral = REFERRAL_MAP.get(classification["stage"], {"recommended": True, "urgency": "refer to ophthalmologist — unrecognised stage"}) if classification else None
 
         needs_review = False
+        review_reasons = []
         if classification:
             low_conf = classification["confidence"] < CONF_ABSTAIN_THRESHOLD
             borderline_fundus = quality["fundus_score"] < FUNDUS_REVIEW_BAND
             needs_review = bool(low_conf or borderline_fundus)
+            if low_conf:
+                review_reasons.append("low_confidence")
+            if borderline_fundus:
+                review_reasons.append("borderline_fundus_quality")
             if needs_review and referral is not None:
                 referral = {
                     **referral,
@@ -175,11 +235,7 @@ class DRPredictor:
         return {
             "status": "ok",
             "needs_human_review": needs_review,
-            "review_reasons": (
-                ([r for r, hit in (("low_confidence", low_conf), ("borderline_fundus_quality", borderline_fundus)) if hit])
-                if classification
-                else []
-            ),
+            "review_reasons": review_reasons,
             "quality": quality,
             "classification": classification,
             "segmentation": {

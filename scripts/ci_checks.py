@@ -75,10 +75,77 @@ def test_fhir_report():
     print("PASS fhir report:", report["conclusionCode"]["coding"][0]["display"])
 
 
+def test_api_health():
+    """Boot the FastAPI app with TestClient and verify the health endpoint."""
+    from fastapi.testclient import TestClient
+
+    from src.api.server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/health")
+    assert resp.status_code == 200, f"health check failed: {resp.status_code} {resp.text}"
+    body = resp.json()
+    assert body["status"] == "ok", f"unexpected status: {body}"
+    print(f"PASS api health: models_loaded={body['models_loaded']}")
+
+
+def test_api_file_type_validation():
+    """Reject non-image uploads with 415 Unsupported Media Type."""
+    from fastapi.testclient import TestClient
+
+    from src.api.server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    # Send a .txt file — should be rejected
+    resp = client.post(
+        "/api/predict",
+        files={"file": ("test.txt", b"not an image", "text/plain")},
+    )
+    assert resp.status_code == 415, f"expected 415, got {resp.status_code}: {resp.text}"
+    print("PASS api file type validation: rejected .txt upload")
+
+
+def test_api_demo_images():
+    """Verify the demo-images endpoint returns a list."""
+    from fastapi.testclient import TestClient
+
+    from src.api.server import app
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.get("/api/demo-images")
+    assert resp.status_code == 200, f"demo-images failed: {resp.status_code}"
+    body = resp.json()
+    assert "images" in body, f"unexpected response: {body}"
+    print(f"PASS api demo-images: {len(body['images'])} images listed")
+
+
+def test_fhir_robustness():
+    """FHIR generator handles edge cases without crashing."""
+    # Empty lesion summary
+    report = generate_fhir_report(
+        "edge-patient",
+        {"stage": 0, "label": "No DR", "confidence": 0.99},
+        {},
+    )
+    assert report["resourceType"] == "DiagnosticReport"
+    # None lesion summary
+    report2 = generate_fhir_report(
+        "edge-patient-2",
+        {"stage": 1, "label": "Mild NPDR", "confidence": 0.7},
+        None,
+    )
+    assert report2["conclusionCode"]["coding"][0]["code"] == "714812005"
+    print("PASS fhir robustness: edge cases handled")
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         test_iqa_gradable(Path(tmp))
         test_iqa_blur_rejected(Path(tmp))
         test_random_photo_rejected(Path(tmp))
     test_fhir_report()
+    test_fhir_robustness()
+    test_api_health()
+    test_api_file_type_validation()
+    test_api_demo_images()
     print("ALL CI CHECKS PASSED")

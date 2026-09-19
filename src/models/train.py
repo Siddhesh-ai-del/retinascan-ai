@@ -43,37 +43,54 @@ def set_seed(seed=SEED):
 
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=None, gamma=2.0):
+    def __init__(self, alpha=None, gamma=2.0, label_smoothing=0.0):
         super().__init__()
         self.alpha = alpha
         self.gamma = gamma
+        self.label_smoothing = label_smoothing
 
     def forward(self, logits, targets):
-        ce = F.cross_entropy(logits, targets, weight=self.alpha, reduction="none")
-        pt = torch.exp(-ce)
-        focal = (1 - pt) ** self.gamma * ce
+        num_classes = logits.size(-1)
+        if self.label_smoothing > 0:
+            with torch.no_grad():
+                smooth = torch.full_like(logits, self.label_smoothing / (num_classes - 1))
+                smooth.scatter_(1, targets.unsqueeze(1), 1.0 - self.label_smoothing)
+            log_probs = F.log_softmax(logits, dim=-1)
+            loss = -(smooth * log_probs).sum(dim=-1)
+            pt = torch.exp(-loss)
+            focal = (1 - pt) ** self.gamma * loss
+        else:
+            ce = F.cross_entropy(logits, targets, weight=self.alpha, reduction="none")
+            pt = torch.exp(-ce)
+            focal = (1 - pt) ** self.gamma * ce
         return focal.mean()
 
 
-def compute_class_weights(labels):
+def compute_class_weights(labels, severity_boost=2.0):
     counts = np.bincount(labels, minlength=NUM_CLASSES).astype(np.float64)
     weights = len(labels) / (NUM_CLASSES * np.maximum(counts, 1))
     weights = weights / weights.mean()
+    # Extra boost for underrepresented severe classes
+    boost = np.ones(NUM_CLASSES, dtype=np.float64)
+    boost[3] = severity_boost   # Severe NPDR
+    boost[4] = severity_boost   # Proliferative DR
+    weights = weights * boost
+    weights = weights / weights.mean()  # re-normalize
     return torch.tensor(weights, dtype=torch.float32)
 
 
-def make_loaders(args):
+def make_loaders(args, severity_boost=3.0):
     cache_root = PROJECT_ROOT / "data" / "processed"
 
     if args.mode == "classification":
-        train_ds = build_combined_dataset(transform=TRAIN_TRANSFORM, cache_root=cache_root)
-        val_ds = build_combined_dataset(transform=EVAL_TRANSFORM, cache_root=cache_root)
+        train_ds = build_combined_dataset(transform=TRAIN_TRANSFORM, include_aptos=False, cache_root=cache_root)
+        val_ds = build_combined_dataset(transform=EVAL_TRANSFORM, include_aptos=False, cache_root=cache_root)
         labels = train_ds.labels
         train_idx, val_idx = train_test_split(
             np.arange(len(train_ds)), test_size=0.2, stratify=labels, random_state=SEED
         )
         train_subset, val_subset = Subset(train_ds, train_idx.tolist()), Subset(val_ds, val_idx.tolist())
-        class_weights = compute_class_weights(labels[train_idx])
+        class_weights = compute_class_weights(labels[train_idx], severity_boost=severity_boost)
         print(f"Train: {len(train_subset)} | Val: {len(val_subset)} | Class weights: {class_weights.numpy().round(3)}")
         return (
             DataLoader(train_subset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True),
@@ -87,16 +104,24 @@ def make_loaders(args):
     idrid_val = IDRiDDataset(task="segmentation", transform=EVAL_TRANSFORM, split="train", cache_root=cache_root)
     idrid_val_test = IDRiDDataset(task="segmentation", transform=EVAL_TRANSFORM, split="test", cache_root=cache_root)
 
-    pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test])
-    pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test])
-    idx = np.arange(len(pool_train))
-    train_idx, val_idx = train_test_split(idx, test_size=0.2, random_state=SEED)
-    train_subset = Subset(pool_train, train_idx.tolist())
-    val_subset = Subset(pool_val, val_idx.tolist())
-    print(f"Seg Train: {len(train_subset)} | Seg Val: {len(val_subset)}")
+    # Also load DDR dataset (383 images with masks — 7x more than IDRiD)
+    try:
+        from src.data.dataset import DDRSegmentationDataset
+        ddr_train = DDRSegmentationDataset(transform=TRAIN_TRANSFORM, split="train", cache_root=cache_root)
+        ddr_val = DDRSegmentationDataset(transform=EVAL_TRANSFORM, split="valid", cache_root=cache_root)
+        # Use DDR train for training, DDR valid for validation (proper split)
+        pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test, ddr_train])
+        pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test, ddr_val])
+        print(f"Using IDRiD + DDR for segmentation training")
+    except FileNotFoundError:
+        pool_train = torch.utils.data.ConcatDataset([idrid_train, idrid_test])
+        pool_val = torch.utils.data.ConcatDataset([idrid_val, idrid_val_test])
+        print(f"DDR not found, using IDRiD only")
+
+    print(f"Seg Train: {len(pool_train)} | Seg Val: {len(pool_val)}")
     return (
-        DataLoader(train_subset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True),
-        DataLoader(val_subset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True),
+        DataLoader(pool_train, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True, drop_last=True),
+        DataLoader(pool_val, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True),
         None,
         None,
     )
@@ -145,9 +170,15 @@ def train_classification(args):
     train_loader, val_loader, class_weights, _ = make_loaders(args)
 
     model = DRClassifier(num_classes=NUM_CLASSES, pretrained=True).to(device)
-    criterion = FocalLoss(alpha=class_weights.to(device), gamma=2.0)
+    criterion = FocalLoss(alpha=class_weights.to(device), gamma=2.0, label_smoothing=0.15)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=args.lr * 10,  # Peak LR is 10x base
+        epochs=args.epochs,
+        steps_per_epoch=len(train_loader),
+        pct_start=0.3,  # Warmup for 30% of training
+    )
     scaler = torch.amp.GradScaler("cuda")
 
     out_dir = PROJECT_ROOT / "models" / "classification"
@@ -168,9 +199,9 @@ def train_classification(args):
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()  # OneCycleLR: step per batch
             running_loss += loss.item()
             pbar.set_postfix(loss=f"{loss.item():.4f}")
-        scheduler.step()
 
         acc, preds, targets = evaluate_classifier(model, val_loader, device)
         print(f"Epoch {epoch + 1}: train_loss={running_loss / max(len(train_loader), 1):.4f} val_acc={acc:.4f}")
@@ -257,9 +288,9 @@ def main():
     args = parser.parse_args()
 
     if args.mode == "classification":
-        args.epochs = args.epochs or 30
+        args.epochs = args.epochs or 50
         args.batch_size = args.batch_size or 16
-        args.lr = args.lr or 1e-4
+        args.lr = args.lr or 2e-4  # Doubled for OneCycleLR peak
         set_seed()
         train_classification(args)
     else:

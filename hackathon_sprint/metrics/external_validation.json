@@ -1,0 +1,113 @@
+{
+  "total_images": 3662,
+  "rejected_by_iqa": 268,
+  "evaluated": 3394,
+  "rejection_rate": 0.0732,
+  "accuracy": 0.6081,
+  "accuracy_95ci": [
+    0.5922,
+    0.6232
+  ],
+  "per_class": {
+    "No DR": {
+      "precision": 0.9498,
+      "recall": 0.8492,
+      "f1": 0.8967,
+      "support": 1605.0
+    },
+    "Mild NPDR": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 361.0
+    },
+    "Moderate NPDR": {
+      "precision": 0.4621,
+      "recall": 0.5413,
+      "f1": 0.4986,
+      "support": 968.0
+    },
+    "Severe NPDR": {
+      "precision": 0.1672,
+      "recall": 0.5414,
+      "f1": 0.2555,
+      "support": 181.0
+    },
+    "Proliferative DR": {
+      "precision": 0.3835,
+      "recall": 0.2832,
+      "f1": 0.3258,
+      "support": 279.0
+    }
+  },
+  "referable_dr": {
+    "sensitivity": 0.9748,
+    "specificity": 0.7284,
+    "ppv": 0.7227,
+    "npv": 0.9755,
+    "tp": 1392,
+    "fp": 534,
+    "tn": 1432,
+    "fn": 36,
+    "sensitivity_95ci": [
+      0.9654,
+      0.9821
+    ],
+    "auc": 0.8433
+  },
+  "confusion_matrix": [
+    [
+      1363,
+      32,
+      204,
+      2,
+      4
+    ],
+    [
+      37,
+      0,
+      269,
+      45,
+      10
+    ],
+    [
+      26,
+      0,
+      524,
+      333,
+      85
+    ],
+    [
+      2,
+      0,
+      53,
+      98,
+      28
+    ],
+    [
+      7,
+      1,
+      84,
+      108,
+      79
+    ]
+  ],
+  "latency": {
+    "mean_ms": 350.4,
+    "p95_ms": 445.0,
+    "p99_ms": 489.3
+  },
+  "segmenter_retrained": true,
+  "segmenter_training_data": "IDRiD + DDR (437 training images, 14x increase from 54)",
+  "segmenter_results": {
+    "val_dice": 0.475,
+    "test_dice": 0.314,
+    "per_class_test": {
+      "microaneurysms": 0.116,
+      "hemorrhages": 0.178,
+      "hard_exudates": 0.196,
+      "cotton_wool_spots": 0.769
+    },
+    "improvement_over_baseline": "+129% val dice (0.207 -> 0.475)"
+  }
+}

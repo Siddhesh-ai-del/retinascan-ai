@@ -79,7 +79,10 @@ def findings_text(lesions):
             sentences.append("Retinal hemorrhages present")
         elif name == "Cotton Wool Spots":
             sentences.append("Cotton wool spots identified")
-    return ". ".join(sentences) + f". Not detected: {', '.join(sorted(absent))}." if absent else ". ".join(sentences) + "."
+    text = ". ".join(sentences) + "."
+    if absent:
+        text += f" Not detected: {', '.join(sorted(absent))}."
+    return text
 
 
 def generate_pdf_report(payload) -> bytes:

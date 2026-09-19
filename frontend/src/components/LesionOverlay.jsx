@@ -48,7 +48,9 @@ export default function LesionOverlay({ segmentation, attention }) {
               <input type="checkbox" checked={active[l.key]} onChange={() => toggle(l.key)} />
               <span className="dot" style={{ background: l.color }} />
               <span className="legend-name">{l.name}</span>
-              <span className="legend-status">{info.detected ? 'detected' : '—'}</span>
+              <span className="legend-status">
+                {info.detected ? `${info.area_percent}%` : '—'}
+              </span>
             </label>
           );
         })}

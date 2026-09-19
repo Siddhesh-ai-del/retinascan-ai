@@ -1,6 +1,16 @@
 {
-  "best_val_dice": 0.2065780287320354,
-  "epochs": 100,
-  "batch_size": 8,
-  "lr": 0.0001
+  "best_val_dice": 0.4748,
+  "per_class": {
+    "microaneurysms": 0.11555555555555555,
+    "hemorrhages": 0.17777777777777778,
+    "hard_exudates": 0.19555555555555557,
+    "cotton_wool_spots": 0.7688888888888888
+  },
+  "training_data": "IDRiD (54 images) + DDR (383 train images) = 437 training images",
+  "test_data": "DDR test set (225 images)",
+  "previous_val_dice": 0.2066,
+  "improvement": "52%",
+  "test_dice": 0.3144,
+  "note": "Test dice on DDR test set (225 unseen images) with correct split-specific labels",
+  "val_dice_note": "Validation dice (0.475) was computed during training with DataLoader; test_dice is the held-out metric"
 }

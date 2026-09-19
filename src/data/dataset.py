@@ -242,3 +242,75 @@ def build_combined_dataset(transform=None, include_idrid=True, include_aptos=Tru
     if not datasets:
         raise RuntimeError("No datasets available. Download data first.")
     return CombinedDataset(datasets)
+
+
+class DDRSegmentationDataset(Dataset):
+    """DDR dataset for lesion segmentation. 383 training images with pixel-level masks."""
+
+    # DDR lesion types → our 4-class format
+    # MA = Microaneurysms, HE = Haemorrhages, EX = Hard Exudates, SE = Soft Exudates (CWS)
+    LESION_MAP = {"MA": 0, "HE": 1, "EX": 2, "SE": 3}
+
+    def __init__(self, transform=None, split="train", cache_root=None):
+        root = get_project_root() / "data" / "raw" / "ddr" / "lesion_segmentation"
+        self.transform = transform or SEG_TRAIN_TRANSFORM
+        self.cache_root = cache_root
+        self.samples = []
+        self.label_dir = root / split / "label"
+
+        img_dir = root / split / "image"
+        label_dir = self.label_dir
+
+        if not img_dir.exists():
+            raise FileNotFoundError(f"DDR not found at {root}. Run kaggle datasets download sunfish141/ddr-segmentation first.")
+
+        # Build sample list from images that have masks
+        for img_path in sorted(img_dir.glob("*.jpg")):
+            img_id = img_path.stem
+            # Check if at least one mask exists
+            has_mask = any((label_dir / lesion_type / f"{img_id}.tif").exists()
+                          for lesion_type in self.LESION_MAP)
+            if has_mask:
+                self.samples.append({
+                    "path": str(img_path),
+                    "id": img_id,
+                    "label": 0,  # No grading labels in DDR segmentation subset
+                })
+
+        print(f"DDR {split}: {len(self.samples)} images with masks")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _load_mask(self, label_dir, lesion_type, img_id, image_path=None):
+        """Load a single lesion mask, return binary array at DEFAULT_SIZE."""
+        mask_path = label_dir / lesion_type / f"{img_id}.tif"
+        if not mask_path.exists():
+            return np.zeros((DEFAULT_SIZE, DEFAULT_SIZE), dtype=np.float32)
+        m = load_mask_aligned(mask_path, image_path, self.cache_root)
+        return (m > 0).astype(np.float32)
+
+    def __getitem__(self, idx):
+        s = self.samples[idx]
+        base = get_cached_uint8(s["path"], self.cache_root)
+        image = cv2.cvtColor(base, cv2.COLOR_GRAY2RGB) if base.ndim == 2 else base
+
+        root = get_project_root() / "data" / "raw" / "ddr" / "lesion_segmentation"
+        label_dir = self.label_dir
+
+        # Load 4 lesion masks (MA, HE, EX, SE)
+        masks = np.stack(
+            [self._load_mask(label_dir, lesion_type, s["id"], s["path"]) for lesion_type in ["MA", "HE", "EX", "SE"]],
+            axis=-1,
+        )
+
+        augmented = self.transform(image=image, masks=[masks[..., i] for i in range(NUM_LESIONS)])
+        img_t = augmented["image"]
+        mask_t = torch.stack([torch.from_numpy(np.ascontiguousarray(m)).float() for m in augmented["masks"]], dim=0)
+        label_t = torch.tensor(s["label"], dtype=torch.long)
+        return img_t, label_t, mask_t
+
+
+def build_ddr_segmentation_dataset(transform=None, split="train", cache_root=None):
+    """Build DDR segmentation dataset (383 train images with lesion masks)."""
+    return DDRSegmentationDataset(transform=transform, split=split, cache_root=cache_root)

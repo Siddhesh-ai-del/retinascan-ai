@@ -89,6 +89,8 @@ def main():
     parser = argparse.ArgumentParser(description="Export trained models to ONNX and quantize")
     parser.add_argument("--skip-classifier", action="store_true")
     parser.add_argument("--skip-segmenter", action="store_true")
+    parser.add_argument("--skip-quantize", action="store_true",
+                        help="Skip INT8 quantization (may degrade small models)")
     args = parser.parse_args()
 
     if not ONNX_DIR.exists():
@@ -99,15 +101,24 @@ def main():
         cls_model = load_classifier()
         cls_onnx = ONNX_DIR / "classifier.onnx"
         export_onnx(cls_model, cls_onnx)
-        quantize_onnx(cls_onnx, ONNX_DIR / "classifier_int8.onnx")
-        results["classifier"] = [benchmark(cls_onnx), benchmark(ONNX_DIR / "classifier_int8.onnx")]
+        cls_results = [benchmark(cls_onnx)]
+        if not args.skip_quantize:
+            quantize_onnx(cls_onnx, ONNX_DIR / "classifier_int8.onnx")
+            cls_results.append(benchmark(ONNX_DIR / "classifier_int8.onnx"))
+        results["classifier"] = cls_results
 
     if not args.skip_segmenter:
         seg_model = load_segmenter()
         seg_onnx = ONNX_DIR / "segmenter.onnx"
         export_onnx(seg_model, seg_onnx)
-        quantize_onnx(seg_onnx, ONNX_DIR / "segmenter_int8.onnx")
-        results["segmenter"] = [benchmark(seg_onnx), benchmark(ONNX_DIR / "segmenter_int8.onnx")]
+        seg_results = [benchmark(seg_onnx)]
+        if not args.skip_quantize:
+            # NOTE: INT8 quantization degrades the U-Net segmenter (13x slower
+            # in benchmarks). Skip by default; pass --skip-quantize=false to
+            # force it for comparison.
+            quantize_onnx(seg_onnx, ONNX_DIR / "segmenter_int8.onnx")
+            seg_results.append(benchmark(ONNX_DIR / "segmenter_int8.onnx"))
+        results["segmenter"] = seg_results
 
     (ONNX_DIR / "benchmark_results.json").write_text(json.dumps(results, indent=2))
     print("All exports complete.")

@@ -94,7 +94,7 @@ export default function App() {
       <main className="app-main">
         {tab === 'single' &&
           (prediction ? (
-            <Results result={prediction} meta={meta} patientId={patientId} attention={attentionB64} />
+            <Results result={prediction} meta={meta} patientId={patientId} attention={attentionB64} previewUrl={previewUrl} />
           ) : (
             <Upload
               onResult={(res, latency) => {
@@ -113,7 +113,7 @@ export default function App() {
           <BatchScreening onOpenResult={openResult} />
         )}
         {tab === 'batch' && prediction && (
-          <Results result={prediction} meta={meta} patientId={patientId} attention={attentionB64} />
+          <Results result={prediction} meta={meta} patientId={patientId} attention={attentionB64} previewUrl={previewUrl} />
         )}
 
         {tab === 'about' && <HowItWorks />}
