@@ -199,6 +199,9 @@ async def predict(
         raise HTTPException(status_code=503, detail="Models not loaded yet. Train models and run ONNX export first.")
     if eye not in ("L", "R", "unknown"):
         raise HTTPException(status_code=400, detail="eye must be one of: L, R, unknown")
+    # Accept patient_id from form body OR query parameter (frontend sends as query param)
+    if not patient_id:
+        patient_id = request.query_params.get("patient_id", "")
     pid = patient_id or "anonymous"
     path = await _save_and_keep(file)
     try:
