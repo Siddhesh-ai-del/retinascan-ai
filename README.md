@@ -4,7 +4,7 @@
 
 **AI-Based Diabetic Retinopathy Screening & Classification**
 
-Upload a fundus image → quality gate → 5-stage ICDR classification → lesion segmentation overlay → HL7 FHIR R4 report.
+Upload a fundus image → quality gate → ConvNeXt ensemble ICDR classification (0–4) → lesion segmentation overlay → Grad-CAM attention map → HL7 FHIR R4 report. Abstains below 55% confidence — never a confident wrong answer.
 
 [![CI](https://github.com/Siddhesh-ai-del/retinascan-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Siddhesh-ai-del/retinascan-ai/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
@@ -14,6 +14,7 @@ Upload a fundus image → quality gate → 5-stage ICDR classification → lesio
 [![ONNX](https://img.shields.io/badge/ONNX%20Runtime-CPU%20%7C%20GPU-005CED?style=flat-square&logo=onnx&logoColor=white)](https://onnxruntime.ai)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg?style=flat-square)](LICENSE)
 
+![ICDR Accuracy](https://img.shields.io/badge/internal_val_accuracy-82.1%25-blue?style=for-the-badge)
 ![ICDR Accuracy](https://img.shields.io/badge/external_val_accuracy-60.8%25-blue?style=for-the-badge)
 ![Sensitivity](https://img.shields.io/badge/referable_DR_sensitivity-97.5%25-green?style=for-the-badge)
 ![Inference](https://img.shields.io/badge/full_pipeline-0.59s-success?style=for-the-badge)
@@ -29,9 +30,9 @@ Upload a fundus image → quality gate → 5-stage ICDR classification → lesio
 |---|---|---|
 | 🛡️ Image Quality Gate | OpenCV (retina-masked CLAHE-Laplacian blur, brightness, glare, fundus geometry) | Gradable verdict + recapture guidance |
 | 🎨 Preprocessing | CLAHE → green channel → pupil-centered crop → 512² | Normalized tensor |
-| 🧠 Classification | EfficientNet-B2 (focal loss, class-weighted) | ICDR stage 0–4 + confidence |
-| 🔬 Lesion Segmentation | U-Net / ResNet18 encoder (Dice + weighted BCE) | Microaneurysms · Hemorrhages · Hard Exudates · Cotton Wool Spots |
-| 📊 Visualization | Per-lesion toggleable overlays | Color-coded canvas |
+| 🧠 Classification | **ConvNeXt-Tiny (28M) · 4-model ensemble** (focal loss, class-weighted) | ICDR stage 0–4 + confidence; **abstains below 55%** |
+| 🔬 Lesion Segmentation | U-Net / ResNet18 encoder (Dice + weighted BCE), trained on **IDRiD + DDR** (811 imgs, 15×) | Microaneurysms · Hemorrhages · Hard Exudates · Cotton Wool Spots |
+| 📊 Visualization | Per-lesion toggleable overlays + **Grad-CAM attention heatmaps** | Color-coded canvas |
 | 🏥 Interoperability | HL7 **FHIR R4** DiagnosticReport (SNOMED CT + LOINC) | Standards-compliant JSON |
 
 ## 🚀 Quick Start
@@ -92,20 +93,30 @@ Open **http://localhost:3000**, then drag an image from `demo_images/`:
               ┌─────────────┴─────────────┐
               ▼                           ▼
    ┌────────────────────┐      ┌────────────────────┐
-   │ EfficientNet-B2    │      │ U-Net (ResNet18)   │
-   │ ICDR stage 0–4     │      │ MA·HE·EX·CWS masks │
+   │ ConvNeXt-Tiny      │      │ U-Net (ResNet18)   │
+   │ 4-model ensemble   │      │ MA·HE·EX·CWS masks │
+   │ ICDR stage 0–4     │      │ (IDRiD + DDR)      │
    └─────────┬──────────┘      └─────────┬──────────┘
              └─────────────┬─────────────┘
                            ▼
             ┌──────────────────────────────┐
-            │ overlays · referral advice · │
-            │ FHIR R4 DiagnosticReport     │
+            │ overlays · Grad-CAM ·        │
+            │ referral advice (abstain     │
+            │ <55%) · FHIR R4 Report       │
             └──────────────────────────────┘
 ```
 
-Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU fallback).
+Both models run as **FP32 ONNX** via onnxruntime (CUDA when available, CPU fallback). INT8 quantization is kept out of the pipeline — it degrades ConvNeXt-Tiny (5.8× slower on CPU).
 
 ## 📈 Results
+
+### Internal Validation (held-out IDRiD + APTOS split)
+
+| Metric | Value |
+|---|---|
+| Overall accuracy (4-model ensemble) | **82.1%** (single best: 80.4%) |
+| Backbone upgrade over EfficientNet-B2 | 73.5% → 82.1% (+8.6%) |
+| Segmenter Dice (DDR test, 225 unseen imgs) | 0.314 — Cotton Wool Spots strongest at **0.769** |
 
 ### External Validation (APTOS 2019 — 3,394 unseen images)
 
@@ -134,9 +145,9 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 |---|---|
 | Full pipeline latency (CPU) | **0.59 s** |
 | P95 latency | 0.71 s |
-| Classifier ONNX latency | 77 ms |
+| Classifier ONNX latency | 160 ms (FP32) |
 | Segmenter ONNX latency | 150 ms |
-| Parameters | 8.1M classifier · 12.5M segmenter |
+| Parameters | 28M classifier (ConvNeXt-Tiny) · 12.5M segmenter |
 
 ## 🌐 API
 
@@ -145,6 +156,7 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 | `POST /api/assess-quality` | IQA only — gradable verdict + feedback |
 | `POST /api/predict?patient_id=` | Full pipeline (JSON with base64 overlays + FHIR) |
 | `POST /api/batch-predict` | Batch analysis (up to 20 images) |
+| `POST /api/explain` | Grad-CAM attention heatmap for the predicted ICDR stage |
 | `GET  /api/fhir/{patient_id}` | Cached FHIR DiagnosticReport |
 | `GET  /api/report/{patient_id}.pdf` | PDF clinical report |
 | `GET  /api/demo-images` | Bundled demo images |
@@ -170,7 +182,8 @@ Both models run as **INT8/FP32 ONNX** via onnxruntime (CUDA when available, CPU 
 ## 📚 Datasets & Citations
 
 - **IDRiD** — Porwal *et al.*, "Indian Diabetic Retinopathy Image Dataset (DRiD)", *Data* 2018 — grading labels + pixel-level lesion annotations
-- **APTOS 2019** — Kaggle Blindness Detection — 3,662 graded fundus images
+- **APTOS 2019** — Kaggle Blindness Detection — 3,662 graded fundus images (3,394 held out for external validation)
+- **DDR** — Diabetic Retinopathy dataset — 757 images (383+149+225) with lesion masks; grew segmentation training 15× (54 → 811 images)
 
 > Trained models are not distributed in this repo — export them with `src.export.onnx_export`.
 
