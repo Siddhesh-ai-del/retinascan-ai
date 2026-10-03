@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install lightweight deps
-        run: pip install numpy opencv-python-headless fastapi httpx python-multipart anyio
+        run: pip install numpy opencv-python-headless fastapi httpx python-multipart anyio onnxruntime==1.29.0 qrcode==8.2 pillow==12.3.0 reportlab==5.0.1
 
       - name: Syntax check all source files
         run: python -m compileall -q src scripts

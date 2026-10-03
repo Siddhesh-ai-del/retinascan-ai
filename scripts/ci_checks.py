@@ -1,4 +1,5 @@
 """CI smoke tests that run without torch or trained models."""
+
 import json
 import sys
 import tempfile
@@ -20,7 +21,11 @@ def synthetic_fundus():
     for _ in range(3500):
         x, y = int(rng.integers(90, 510)), int(rng.integers(90, 510))
         dx, dy = int(rng.integers(-25, 25)), int(rng.integers(-25, 25))
-        color = (30 + int(rng.integers(0, 50)), 70 + int(rng.integers(0, 60)), 110 + int(rng.integers(0, 80)))
+        color = (
+            30 + int(rng.integers(0, 50)),
+            70 + int(rng.integers(0, 60)),
+            110 + int(rng.integers(0, 80)),
+        )
         cv2.line(img, (x, y), (x + dx, y + dy), color, 1)
     return img
 
@@ -60,7 +65,12 @@ def test_random_photo_rejected(tmp):
     r = ImageQualityAssessor().assess(p)
     assert not r["gradable"], f"expected rejection of non-fundus image, got {r}"
     assert "no_fundus_detected" in r["quality_issues"], r["quality_issues"]
-    print("PASS non-fundus rejected:", r["quality_issues"], "fundus_score:", r["fundus_score"])
+    print(
+        "PASS non-fundus rejected:",
+        r["quality_issues"],
+        "fundus_score:",
+        r["fundus_score"],
+    )
 
 
 def test_fhir_report():
@@ -83,7 +93,9 @@ def test_api_health():
 
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.get("/api/health")
-    assert resp.status_code == 200, f"health check failed: {resp.status_code} {resp.text}"
+    assert resp.status_code == 200, (
+        f"health check failed: {resp.status_code} {resp.text}"
+    )
     body = resp.json()
     assert body["status"] == "ok", f"unexpected status: {body}"
     print(f"PASS api health: models_loaded={body['models_loaded']}")
@@ -138,6 +150,16 @@ def test_fhir_robustness():
     print("PASS fhir robustness: edge cases handled")
 
 
+def test_backbone_selection():
+    """Checkpoint backbone metadata -> classifier architecture (torch-free)."""
+    from src.inference.explain import is_convnext_checkpoint
+
+    assert is_convnext_checkpoint({"backbone": "convnext_tiny"})
+    assert not is_convnext_checkpoint({"backbone": "efficientnet_b2"})
+    assert not is_convnext_checkpoint({})  # legacy checkpoints: no metadata
+    print("PASS backbone selection: convnext / efficientnet / legacy mapped")
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         test_iqa_gradable(Path(tmp))
@@ -145,6 +167,7 @@ if __name__ == "__main__":
         test_random_photo_rejected(Path(tmp))
     test_fhir_report()
     test_fhir_robustness()
+    test_backbone_selection()
     test_api_health()
     test_api_file_type_validation()
     test_api_demo_images()
