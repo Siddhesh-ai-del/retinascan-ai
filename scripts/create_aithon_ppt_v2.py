@@ -64,6 +64,7 @@ from deck_lib import (  # noqa: E402
     foot_note,
     kpi,
     panel_title,
+    retint_links,
     rule,
     set_notes,
     square_crop,
@@ -314,14 +315,45 @@ def build_slide1(slide) -> None:
         slide,
         "S1Meta",
         0.78,
-        5.06,
+        4.98,
         5.40,
-        0.20,
+        0.14,
         [
             {
                 "text": "Project presentation  ·  Siddhesh  ·  October 2026",
                 "size": 8.5,
                 "color": MUTED,
+            }
+        ],
+    )
+    add_text(
+        slide,
+        "S1Links",
+        0.78,
+        5.15,
+        5.40,
+        0.14,
+        [
+            {
+                "runs": [
+                    (
+                        "► Demo: youtu.be/KBpc0tp3-Fg",
+                        {
+                            "size": 7.5,
+                            "color": SLATE,
+                            "link": "https://youtu.be/KBpc0tp3-Fg",
+                        },
+                    ),
+                    ("      ·      ", {"size": 7.5, "color": MUTED}),
+                    (
+                        "GitHub: github.com/Siddhesh-ai-del/retinascan-ai",
+                        {
+                            "size": 7.5,
+                            "color": SLATE,
+                            "link": "https://github.com/Siddhesh-ai-del/retinascan-ai",
+                        },
+                    ),
+                ]
             }
         ],
     )
@@ -1374,6 +1406,9 @@ def main() -> int:
 
     for i in range(6):
         set_notes(prs.slides[i], NOTES[i + 1])
+
+    # hyperlink runs paint with the theme's link colour in some renderers
+    retint_links(prs, "475569")  # SLATE — muted, not theme-blue
 
     cp = prs.core_properties
     cp.title = "AITHON 2.0 — RetinaScan AI: AI-Assisted Diabetic Retinopathy Screening"

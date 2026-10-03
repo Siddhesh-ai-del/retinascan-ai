@@ -59,6 +59,10 @@ def _style_run(run, spec: dict) -> None:
     f.color.rgb = spec.get("color", SLATE)
     if "spc" in spec:  # letter-spacing, hundredths of a point
         run.font._rPr.set("spc", str(int(spec["spc"])))
+    if spec.get("link"):  # real clickable hyperlink (text runs only)
+        run.hyperlink.address = spec["link"]
+        f.underline = spec.get("underline", False)
+        f.color.rgb = spec.get("color", SLATE)  # keep explicit colour over theme
 
 
 def add_text(
@@ -101,6 +105,29 @@ def add_text(
             run.text = text
             _style_run(run, rspec)
     return box
+
+
+def retint_links(prs, hex_rgb: str) -> None:
+    """Paint hyperlink runs in the deck palette.
+
+    Renderers (LibreOffice at least) ignore an explicit run colour on a
+    hyperlink and use the theme's <a:hlink>/<a:folHlink> colour instead, so
+    retarget the theme token too — otherwise links come out theme-blue and
+    shouty.  Only touches /ppt/theme/*.xml; template file itself is untouched.
+    """
+    import re
+
+    for part in prs.part.package.iter_parts():
+        if not str(part.partname).startswith("/ppt/theme/"):
+            continue
+        xml = part.blob.decode("utf-8")
+        new = re.sub(
+            r"(<a:hlink>|<a:folHlink>)<a:srgbClr val=\"[0-9A-Fa-f]{6}\"/>",
+            lambda m: f'{m.group(1)}<a:srgbClr val="{hex_rgb}"/>',
+            xml,
+        )
+        if new != xml:
+            part._blob = new.encode("utf-8")
 
 
 def add_rect(
