@@ -1,0 +1,71 @@
+{
+ "fallback": false,
+ "errors": [],
+ "rejected": {
+  "status": "rejected",
+  "quality": {
+   "gradable": false,
+   "blur_score": 0.203,
+   "brightness": 85.5,
+   "fundus_score": 1.0,
+   "quality_issues": [
+    "blur"
+   ],
+   "feedback": "Please recapture: image is blurry \u2014 hold the camera steady and refocus."
+  }
+ },
+ "stage": "Proliferative DR",
+ "confidence": 0.5206,
+ "probabilities": [
+  0.0373,
+  0.0812,
+  0.2435,
+  0.1175,
+  0.5206
+ ],
+ "quality": {
+  "gradable": true,
+  "blur_score": 1.477,
+  "brightness": 74.7,
+  "fundus_score": 0.877,
+  "quality_issues": [],
+  "feedback": null
+ },
+ "needs_human_review": true,
+ "lesions": {
+  "microaneurysms": {
+   "detected": true,
+   "pixels": 72,
+   "area_percent": 0.03,
+   "name": "Microaneurysms"
+  },
+  "hemorrhages": {
+   "detected": true,
+   "pixels": 511,
+   "area_percent": 0.19,
+   "name": "Hemorrhages"
+  },
+  "hard_exudates": {
+   "detected": false,
+   "pixels": 22,
+   "area_percent": 0.01,
+   "name": "Hard Exudates"
+  },
+  "cotton_wool_spots": {
+   "detected": false,
+   "pixels": 0,
+   "area_percent": 0.0,
+   "name": "Cotton Wool Spots"
+  }
+ },
+ "gradcam": {
+  "proliferative_dr.jpg": "Proliferative DR",
+  "moderate_npdr.jpg": "Moderate NPDR",
+  "healthy.jpg": "No DR"
+ },
+ "referral": {
+  "recommended": true,
+  "urgency": "manual review recommended before clinical decision",
+  "overridden_by": "abstention"
+ }
+}
